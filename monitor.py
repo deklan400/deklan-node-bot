@@ -1,39 +1,41 @@
 #!/usr/bin/env python3
-import os
-import time
-import psutil
-import subprocess
+# -*- coding: utf-8 -*-
+
+"""
+  Deklan Smart Monitor — v3.1
+  Auto • Detect • Restart • Reinstall
+"""
+
+import os, time, psutil, subprocess, json, urllib.parse, urllib.request
 from datetime import datetime, timedelta
-import urllib.parse
-import urllib.request
-import json
 
 
 # ======================================================
 # ENV
 # ======================================================
-BOT_TOKEN   = os.getenv("BOT_TOKEN", "")
-CHAT_ID     = os.getenv("CHAT_ID", "")
-NODE_NAME   = os.getenv("NODE_NAME", "deklan-node")
+E = os.getenv
 
-SERVICE     = os.getenv("SERVICE_NAME", "gensyn")
-LOG_LINES   = int(os.getenv("LOG_LINES", "80"))
+BOT_TOKEN   = E("BOT_TOKEN", "")
+CHAT_ID     = E("CHAT_ID", "")
+NODE_NAME   = E("NODE_NAME", "deklan-node")
 
-AUTO_REPO = os.getenv(
-    "AUTO_INSTALLER_GITHUB",
+SERVICE     = E("SERVICE_NAME", "gensyn")
+LOG_LINES   = int(E("LOG_LINES", "80"))
+
+AUTO_REPO   = E("AUTO_INSTALLER_GITHUB",
     "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
 )
 
-RL_DIR  = os.getenv("RL_DIR", "/root/rl_swarm")
-KEY_DIR = os.getenv("KEY_DIR", "/root/deklan")
+RL_DIR      = E("RL_DIR", "/root/rl_swarm")
+KEY_DIR     = E("KEY_DIR", "/root/deklan")
 
-FLAG_FILE = "/tmp/.node_status.json"
+FLAG_FILE   = "/tmp/.node_status.json"
 
 
 # ======================================================
-# EXEC / SHELL
+# SHELL
 # ======================================================
-def shell(cmd: str) -> str:
+def sh(cmd: str) -> str:
     try:
         return subprocess.check_output(
             cmd, shell=True, stderr=subprocess.STDOUT, text=True
@@ -43,118 +45,101 @@ def shell(cmd: str) -> str:
 
 
 # ======================================================
-# TG SEND
+# TG
 # ======================================================
-def send(msg: str):
-    """Send Telegram text message."""
+def tg(msg):
     if not (BOT_TOKEN and CHAT_ID):
         return
-
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
     payload = {
         "chat_id": CHAT_ID,
         "text": msg,
         "parse_mode": "Markdown",
-        "disable_web_page_preview": True,
+        "disable_web_page_preview": True
     }
-
     data = urllib.parse.urlencode(payload).encode()
+    url  = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     try:
         urllib.request.urlopen(url, data=data, timeout=10)
     except:
         pass
 
 
-def clean(text: str) -> str:
-    for ch in ["`", "*", "_", "["]:
-        text = text.replace(ch, "")
-    return text
+def clean(txt: str):
+    for c in ["`", "*", "_", "["]:
+        txt = txt.replace(c, "")
+    return txt
 
 
 # ======================================================
-# STATUS CACHE
+# FLAG
 # ======================================================
-def load_flag():
+def flag_load():
     if not os.path.isfile(FLAG_FILE):
-        return {"last_status": "unknown", "reinstalled": False}
+        return {"last": "unknown", "once": False}
     try:
         return json.load(open(FLAG_FILE))
     except:
-        return {"last_status": "unknown", "reinstalled": False}
+        return {"last": "unknown", "once": False}
 
 
-def save_flag(status: str, reinstalled=False):
+def flag_set(s, once=False):
     with open(FLAG_FILE, "w") as f:
-        json.dump({"last_status": status, "reinstalled": reinstalled}, f)
+        json.dump({"last": s, "once": once}, f)
 
 
 # ======================================================
-# RL-SWARM AUTO FIX
+# RL-SWARM SELF-HEAL
 # ======================================================
-def fix_keys_symlink():
-    """Ensure keys dir inside RL-Swarm points to KEY_DIR."""
+def fix_keys():
+    """Ensure RL_DIR/keys => KEY_DIR"""
     if not os.path.isdir(RL_DIR):
         return
-
-    k = os.path.join(RL_DIR, "keys")
-    if os.path.islink(k):
+    t = os.path.join(RL_DIR, "keys")
+    if os.path.islink(t):
         return
-
-    # try fix
-    shell(f"rm -rf {k}")
-    shell(f"ln -s {KEY_DIR} {k}")
+    sh(f"rm -rf {t}")
+    sh(f"ln -s {KEY_DIR} {t}")
 
 
 # ======================================================
-# CHECKS
+# CHECK
 # ======================================================
-def is_active() -> bool:
-    return shell(f"systemctl is-active {SERVICE}") == "active"
+def is_up():
+    return sh(f"systemctl is-active {SERVICE}") == "active"
 
 
-def sys_brief() -> str:
-    """CPU / RAM / Disk + uptime."""
+def sys_brief():
     try:
         cpu = psutil.cpu_percent(interval=0.6)
         vm  = psutil.virtual_memory()
         du  = psutil.disk_usage("/")
-        uptime = timedelta(seconds=int(time.time() - psutil.boot_time()))
-
-        return (
-            f"CPU {cpu:.1f}% • "
-            f"RAM {vm.percent:.1f}% • "
-            f"Disk {du.percent:.1f}% • "
-            f"Up {uptime}"
-        )
+        up  = timedelta(seconds=int(time.time() - psutil.boot_time()))
+        return f"CPU {cpu:.1f}% • RAM {vm.percent:.1f}% • Disk {du.percent:.1f}% • Up {up}"
     except:
-        return "(sys info unavailable)"
+        return "(stats unavailable)"
 
 
-def last_round() -> str:
-    line = shell(
-        rf"journalctl -u {SERVICE} --no-pager | grep -E 'Joining round:' | tail -n1"
-    )
-    return line if line else "(round info not found)"
+def last_round():
+    s = rf"journalctl -u {SERVICE} --no-pager | grep -E 'Joining round:' | tail -n1"
+    out = sh(s)
+    return out if out else "(no round info)"
 
 
+# ======================================================
+# ACTION
+# ======================================================
 def try_restart() -> bool:
-    shell(f"systemctl restart {SERVICE}")
-    time.sleep(6)
-    return is_active()
+    sh(f"systemctl restart {SERVICE}")
+    time.sleep(5)
+    return is_up()
 
 
-# ======================================================
-# AUTO REPAIR
-# ======================================================
 def try_reinstall():
     tmp = "/tmp/reinstall.sh"
     url = f"{AUTO_REPO}reinstall.sh"
-
-    shell(f"curl -s -o {tmp} {url}")
-    shell(f"chmod +x {tmp}")
-
-    return shell(f"bash {tmp}")
+    sh(f"curl -s -o {tmp} {url}")
+    sh(f"chmod +x {tmp}")
+    return sh(f"bash {tmp}")
 
 
 # ======================================================
@@ -162,68 +147,51 @@ def try_reinstall():
 # ======================================================
 def main():
     t = datetime.now().strftime("%Y-%m-%d %H:%M")
-    state = load_flag()
+    flag = flag_load()
 
-    # fix symlink before checks
-    fix_keys_symlink()
+    fix_keys()
 
-    # ✅ Node running
-    if is_active():
-        if state.get("last_status") != "up":
-            send(
-                f"✅ *{NODE_NAME}* is UP @ {t}\n"
-                f"{sys_brief()}\n"
-                f"{last_round()}"
-            )
-        save_flag("up", False)
+    # === UP ===
+    if is_up():
+        if flag["last"] != "up":
+            tg(f"✅ *{NODE_NAME}* is UP @ {t}\n{sys_brief()}\n{last_round()}")
+        flag_set("up", False)
         return
 
-    # 🚨 DOWN
-    if state.get("last_status") != "down":
-        send(
-            f"🚨 *{NODE_NAME}* DOWN @ {t}\n"
-            f"↪ Trying restart…"
-        )
+    # === DOWN ===
+    if flag["last"] != "down":
+        tg(f"🚨 *{NODE_NAME}* DOWN @ {t}\n↪ restarting…")
 
-    # 🔁 Try restart
+    # 1) restart
     if try_restart():
-        send(
-            f"🟢 *{NODE_NAME}* RECOVERED @ {t}\n"
-            f"{sys_brief()}"
-        )
-        save_flag("up", False)
+        tg(f"🟢 *{NODE_NAME}* RECOVERED @ {t}\n{sys_brief()}")
+        flag_set("up", False)
         return
 
-    # 🔧 Try reinstall once only
-    if not state.get("reinstalled", False):
-        send("⚙️ Restart failed… trying auto reinstall…")
+    # 2) reinstall once
+    if not flag["once"]:
+        tg("⚙ Restart failed → reinstalling…")
         try_reinstall()
         time.sleep(10)
 
-        if is_active():
-            send(
-                f"✅ *{NODE_NAME}* RECOVERED AFTER REINSTALL @ {t}\n"
-                f"{sys_brief()}"
-            )
-            save_flag("up", False)
+        if is_up():
+            tg(f"✅ *{NODE_NAME}* RECOVERED after REINSTALL @ {t}\n{sys_brief()}")
+            flag_set("up", False)
             return
         else:
-            save_flag("down", True)
+            flag_set("down", True)
 
-    # ❌ FAILED — fallback, dump logs
-    raw_logs = shell(f"journalctl -u {SERVICE} -n {LOG_LINES} --no-pager")
-    logs = clean(raw_logs)
+    # 3) FAILED → dump logs
+    raw = sh(f"journalctl -u {SERVICE} -n {LOG_LINES} --no-pager")
+    logs = clean(raw)[-3500:]
 
-    if len(logs) > 3500:
-        logs = logs[-3500:]
-
-    send(
-        f"❌ *{NODE_NAME}* FAILED RECOVER @ {t}\n"
-        f"Manual action required.\n\n"
+    tg(
+        f"❌ *{NODE_NAME}* FAIL RECOVER @ {t}\n"
+        f"Manual fix needed.\n"
         f"```\n{logs}\n```"
     )
 
-    save_flag("down", True)
+    flag_set("down", True)
 
 
 if __name__ == "__main__":
