@@ -1,79 +1,133 @@
-# Deklan Node Bot
+✅ Deklan Node Bot
 
-Telegram Bot for monitoring & controlling Gensyn RL-Swarm Node.
+Telegram Bot for monitoring & controlling Gensyn RL-Swarm Node
 
----
+📦 Features
+✅ Auto-start bot via systemd
+✅ Show CPU / RAM / Disk / Uptime
+✅ Start / Stop / Restart RL-Swarm
+✅ Show node logs
+✅ Show latest round
+✅ Menu UI via Telegram
+✅ Secure .env secrets
+✅ Python lightweight
 
-## ✅ INSTALL (1 Command)
+⚙️ Installation
+1️⃣ Clone repo
+git clone https://github.com/deklan400/deklan-node-bot
+cd deklan-node-bot
 
-bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh
-)
+2️⃣ Install Python deps
+pip install -r requirements.txt
 
+3️⃣ Create config .env
 
----
+Copy template:
 
-## ✅ Setup
-
-Edit `.env`
-
-cd /opt/deklan-node-bot
-nano .env
-
-
-Isi:
-BOT_TOKEN=xxxx
-CHAT_ID=xxxx
+cp .env.example .env
 
 
-Restart bot:
+Edit .env:
+
+BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+CHAT_ID=YOUR_TELEGRAM_CHAT_ID
+
+🔥 Systemd install (auto-run)
+sudo cp bot.service /etc/systemd/system/bot.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now bot
 
 
----
+Check:
 
-## ✅ Commands Telegram
+systemctl status bot
 
-| Command | Function |
-|--------|---------|
-| /start | Open menu |
 
----
+Logs:
 
-## ✅ Menu UI
+journalctl -u bot -f
 
-| Button | Function |
-|--------|---------|
-| 📊 Status Node | systemctl status gensyn |
-| 🟢 Start | start node |
-| 🔴 Stop | stop node |
-| 🔄 Restart | restart node |
-| 📜 Logs | view logs |
 
----
+Stop:
 
-## ✅ Manage bot
-
-systemctl start bot
 systemctl stop bot
+
+
+Restart:
+
 systemctl restart bot
+
+🤖 Telegram Commands
+
+Command:
+/start → open menu
+
+Actions:
+
+Status  → show CPU / RAM / Disk / uptime
+Start   → start node
+Stop    → stop node
+Restart → restart node
+Logs    → latest logs
+Round   → show latest round
+
+🧠 Node Control
+
+Start node:
+
+sudo systemctl start gensyn
+
+
+Stop node:
+
+sudo systemctl stop gensyn
+
+
+Restart node:
+
+sudo systemctl restart gensyn
+
+
+Check logs:
+
+journalctl -u gensyn -f
+
+📂 Project Structure
+deklan-node-bot/
+│
+├─ bot.py
+├─ bot.service
+├─ install.sh
+├─ requirements.txt
+├─ .env.example
+└─ README.md
+
+🛠 Troubleshooting
+
+Bot not responding?
+
 systemctl status bot
 journalctl -u bot -f
 
 
----
+Wrong token?
+Edit .env:
 
-## Quick Install
+nano .env
+
+
+Node not detected?
+
+systemctl status gensyn
+
+✅ Auto-Install (coming)
 bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh)
 
-## Konfigurasi
-nano /opt/deklan-node-bot/.env
-# isi BOT_TOKEN, CHAT_ID, optional ALLOWED_USER_IDS, NODE_NAME, MONITOR_EVERY_MINUTES
+✅ Notes
+• Bot must run on same machine as rl-swarm
+• RL-Swarm service name must be: gensyn
+• Telegram API must be configured
 
-## Jalankan / Cek
-systemctl status bot
-systemctl status monitor.timer
-systemctl start monitor.service   # jalankan cek manual sekarang
+💎 Credits
 
-## Telegram
-- /start → tampil menu
-- Tombol Status/Start/Stop/Restart/Logs/Round
-
+Created by Deklan Labz
