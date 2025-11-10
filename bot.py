@@ -2,58 +2,72 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 if not BOT_TOKEN:
-    print("❌ BOT_TOKEN belum di-set.")
-    print("Silakan export dulu:")
-    print('export BOT_TOKEN="TOKEN_BOT_KAMU"')
-    exit(1)
+    raise Exception("❌ BOT_TOKEN belum di-set pada .env")
 
-MENU_BUTTONS = [
-    [InlineKeyboardButton("📊 Status Node", callback_data="status")],
-    [InlineKeyboardButton("▶️ Start Node", callback_data="start")],
-    [InlineKeyboardButton("⏹ Stop Node", callback_data="stop")],
-    [InlineKeyboardButton("🔄 Restart Node", callback_data="restart")],
-    [InlineKeyboardButton("📋 Logs", callback_data="logs")],
-]
+# --- Utility
+def run(cmd):
+    return os.popen(cmd).read()
 
+# --- Commands
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = InlineKeyboardMarkup(MENU_BUTTONS)
-    await update.message.reply_text("Selamat datang di *Gensyn Node Bot* ⚡", parse_mode="Markdown", reply_markup=keyboard)
+    if str(update.effective_chat.id) != str(CHAT_ID):
+        await update.message.reply_text("❌ Unauthorized")
+        return
 
-async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    kb = [
+        [InlineKeyboardButton("📊 Status Node", callback_data="status")],
+        [
+            InlineKeyboardButton("🟢 Start", callback_data="start"),
+            InlineKeyboardButton("🔴 Stop", callback_data="stop")
+        ],
+        [InlineKeyboardButton("🔄 Restart", callback_data="restart")],
+        [InlineKeyboardButton("📜 Logs", callback_data="logs")],
+    ]
 
-    action = query.data
+    await update.message.reply_text(
+        "⚡ Deklan Node Bot — Control Panel",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
+
+
+async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    action = q.data
 
     if action == "status":
-        await query.edit_message_text("📊 Status Node: *ONLINE*", parse_mode="Markdown")
+        txt = run("systemctl status gensyn --no-pager")
+        await q.edit_message_text(f"📊 *STATUS:*\n```\n{txt}\n```", parse_mode="Markdown")
 
     elif action == "start":
-        await query.edit_message_text("▶️ Starting node...")
+        run("systemctl start gensyn")
+        await q.edit_message_text("🟢 Node started")
 
     elif action == "stop":
-        await query.edit_message_text("⏹ Stopping node...")
+        run("systemctl stop gensyn")
+        await q.edit_message_text("🔴 Node stopped")
 
     elif action == "restart":
-        await query.edit_message_text("🔄 Restarting node...")
+        run("systemctl restart gensyn")
+        await q.edit_message_text("🔄 Node restarted")
 
     elif action == "logs":
-        await query.edit_message_text("📋 Fetching logs...")
+        txt = run("journalctl -u gensyn -n 30 --no-pager")
+        await q.edit_message_text(f"📜 *LOGS:*\n```\n{txt}\n```", parse_mode="Markdown")
 
-    else:
-        await query.edit_message_text("Tidak dikenal.")
 
+# --- Main
 def main():
-    print("✅ Bot running...")
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_action))
-
+    app.add_handler(CallbackQueryHandler(buttons))
+    print("✅ BOT RUNNING...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
