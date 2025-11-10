@@ -22,27 +22,41 @@ from telegram.ext import (
 # ======================================================
 # ENV / CONFIG
 # ======================================================
-BOT_TOKEN   = os.getenv("BOT_TOKEN", "")
-CHAT_ID     = str(os.getenv("CHAT_ID", ""))
-NODE_NAME   = os.getenv("NODE_NAME", "deklan-node")
+env = os.getenv
 
-SERVICE     = os.getenv("SERVICE_NAME", "gensyn")
-LOG_LINES   = int(os.getenv("LOG_LINES", "80"))
+BOT_TOKEN   = env("BOT_TOKEN", "")
+CHAT_ID     = str(env("CHAT_ID", ""))
+
+NODE_NAME   = env("NODE_NAME", "deklan-node")
+
+SERVICE     = env("SERVICE_NAME", "gensyn")
+LOG_LINES   = int(env("LOG_LINES", "80"))
+
+RL_DIR      = env("RL_DIR", "/root/rl_swarm")
+KEY_DIR     = env("KEY_DIR", "/root/deklan")
+
+ROUND_GREP  = env("ROUND_GREP_PATTERN", "Joining round:")
+
+LOG_MAX     = int(env("LOG_MAX_CHARS", "3500"))
+
+MONITOR_TRY_REINSTALL = env("MONITOR_TRY_REINSTALL", "1") == "1"
 
 ALLOWED_USER_IDS = [
-    i.strip() for i in os.getenv("ALLOWED_USER_IDS", "").split(",") if i.strip()
+    i.strip() for i in env("ALLOWED_USER_IDS", "").split(",") if i.strip()
 ]
 
-ENABLE_DANGER = os.getenv("ENABLE_DANGER_ZONE", "0") == "1"
-DANGER_PASS   = os.getenv("DANGER_PASS", "")
+ENABLE_DANGER = env("ENABLE_DANGER_ZONE", "0") == "1"
+DANGER_PASS   = env("DANGER_PASS", "")
 
-AUTO_REPO = os.getenv(
+AUTO_REPO = env(
     "AUTO_INSTALLER_GITHUB",
     "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
 )
 
+
 if not BOT_TOKEN or not CHAT_ID:
     raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — set .env then restart bot")
+
 
 # ======================================================
 # HELPERS
@@ -94,9 +108,8 @@ def _stop():
 
 
 def _round():
-    line = _shell(
-        rf"journalctl -u {SERVICE} --no-pager | grep -E 'Joining round:' | tail -n1"
-    )
+    cmd = rf"journalctl -u {SERVICE} --no-pager | grep -E '{ROUND_GREP}' | tail -n1"
+    line = _shell(cmd)
     return line if line else "(round info not found)"
 
 
@@ -222,7 +235,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = q.data
 
-    # ================= Installer =================
+    # Installer
     if action == "installer":
         return await q.edit_message_text(
             "🧩 *Installer Menu*",
@@ -238,7 +251,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ================= Danger Zone =================
+    # Danger Zone
     if action == "dz":
         return await q.edit_message_text(
             "⚠️ *Danger Zone — Password Required*",
@@ -259,7 +272,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["awaiting_password"] = action
         return
 
-    # ================= Basic OPS =================
+    # Basic OPS
     if action == "status":
         badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
         return await q.edit_message_text(
@@ -282,7 +295,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if action == "logs":
         logs = _logs(LOG_LINES)
-        logs = logs[-3500:] if len(logs) > 3500 else logs
+        logs = logs[-LOG_MAX:] if len(logs) > LOG_MAX else logs
         return await q.edit_message_text(
             f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```",
             parse_mode="Markdown",
@@ -316,7 +329,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
-    # ===== INSTALL CONFIRM =====
+    # INSTALL CONFIRM
     if "pending_inst" in context.user_data:
         mode = context.user_data.pop("pending_inst")
 
@@ -335,15 +348,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fname = script_map.get(mode, "install.sh")
         result = _run_remote(fname)
 
-        if len(result) > 3800:
-            result = result[-3800:]
+        if len(result) > LOG_MAX:
+            result = result[-LOG_MAX:]
 
         return await update.message.reply_text(
             f"✅ Done\n```\n{result}\n```",
             parse_mode="Markdown"
         )
 
-    # ===== DANGER =====
+    # Danger password input
     if "awaiting_password" not in context.user_data:
         return
 
@@ -355,14 +368,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Verified! Running...")
 
     if action == "dz_rm_node":
-        _shell(f"systemctl stop {SERVICE}; systemctl disable {SERVICE}; rm -f /etc/systemd/system/{SERVICE}.service; systemctl daemon-reload; rm -rf /home/gensyn/rl_swarm")
+        _shell(f"systemctl stop {SERVICE}; systemctl disable {SERVICE}; rm -f /etc/systemd/system/{SERVICE}.service; systemctl daemon-reload; rm -rf {RL_DIR}")
         res = "Node removed"
     elif action == "dz_rm_docker":
         res = _shell("docker ps -aq | xargs -r docker rm -f; docker system prune -af")
     elif action == "dz_rm_swap":
         res = _shell("swapoff -a; rm -f /swapfile; sed -i '/swapfile/d' /etc/fstab")
     elif action == "dz_clean_all":
-        res = _shell("systemctl stop gensyn; rm -rf /home/gensyn/rl_swarm; docker system prune -af; swapoff -a; rm -f /swapfile")
+        res = _shell(f"systemctl stop {SERVICE}; rm -rf {RL_DIR}; docker system prune -af; swapoff -a; rm -f /swapfile")
     elif action == "dz_reboot":
         _shell("reboot")
         res = "Rebooting…"
