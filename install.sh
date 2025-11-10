@@ -2,8 +2,9 @@
 set -euo pipefail
 
 ###################################################################
-#   DEKLAN NODE BOT INSTALLER — v2.4
+#   DEKLAN NODE BOT INSTALLER — v2.7 (SMART)
 #   Telegram control + Auto-monitor for RL-Swarm
+#   Includes RL-Swarm auto-detect + validation
 ###################################################################
 
 # ===== COLORS =====
@@ -30,13 +31,17 @@ banner
 BOT_DIR="/opt/deklan-node-bot"
 REPO="https://github.com/deklan400/deklan-node-bot"
 
+# RL-Swarm autolocate
+RL_DIR_DEFAULT="/root/rl_swarm"
+KEY_DIR_DEFAULT="/root/deklan"
+
 
 ###################################################################
 # 1) Install dependencies
 ###################################################################
 echo -e "${YELLOW}[1/7] Installing dependencies...${NC}"
 apt update -y
-apt install -y python3 python3-pip python3-venv git curl >/dev/null 2>&1 || {
+apt install -y python3 python3-venv python3-pip git curl jq >/dev/null 2>&1 || {
   err "Failed installing dependencies"
   exit 1
 }
@@ -87,55 +92,101 @@ echo -e "${YELLOW}[4/7] Preparing ENV...${NC}"
 if [[ ! -f ".env" ]]; then
   cp .env.example .env
   warn "⚠️ Edit .env → set BOT_TOKEN & CHAT_ID"
-  echo "nano $BOT_DIR/.env"
 fi
 
-# Force-inject AUTO_REPO & SERVICE
-grep -q '^AUTO_INSTALLER_GITHUB=' .env || \
-echo "AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/" >> .env
-
-grep -q '^SERVICE_NAME=' .env || echo "SERVICE_NAME=gensyn" >> .env
+# ensure base keys exist
+grep -q '^SERVICE_NAME=' .env      || echo "SERVICE_NAME=gensyn" >> .env
+grep -q '^AUTO_INSTALLER_GITHUB=' .env \
+  || echo "AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/" >> .env
+grep -q '^RL_DIR=' .env      || echo "RL_DIR=$RL_DIR_DEFAULT" >> .env
+grep -q '^KEY_DIR=' .env     || echo "KEY_DIR=$KEY_DIR_DEFAULT" >> .env
 
 chmod 600 .env
 msg ".env ready ✅"
 
 
 ###################################################################
-# 5) Create bot.service
+# 5) RL-Swarm smart check
 ###################################################################
-echo -e "${YELLOW}[5/7] Installing bot.service...${NC}"
+echo -e "${YELLOW}[5/7] Checking RL-Swarm...${NC}"
+
+RL_DIR=$(grep '^RL_DIR=' .env | cut -d'=' -f2)
+KEY_DIR=$(grep '^KEY_DIR=' .env | cut -d'=' -f2)
+
+if [[ -d "$RL_DIR" ]]; then
+    msg "RL-Swarm directory found → $RL_DIR"
+
+    # ensure keys symlink OK
+    if [[ ! -L "$RL_DIR/keys" ]]; then
+      warn "keys/ missing → fixing"
+      rm -rf "$RL_DIR/keys" >/dev/null 2>&1 || true
+      ln -s "$KEY_DIR" "$RL_DIR/keys"
+      msg "keys/ symlink linked ✅"
+    fi
+else
+    warn "RL-Swarm folder NOT found"
+    echo ""
+    read -p "Clone RL-Swarm now? [Y/n] > " ans
+    if [[ ! "$ans" =~ ^[Nn]$ ]]; then
+      git clone https://github.com/gensyn-ai/rl-swarm "$RL_DIR"
+      msg "RL-Swarm cloned ✅"
+
+      rm -rf "$RL_DIR/keys" >/dev/null 2>&1
+      ln -s "$KEY_DIR" "$RL_DIR/keys"
+      msg "keys/ symlink created ✅"
+    else
+      warn "Skipping RL-Swarm clone"
+    fi
+fi
+
+
+###################################################################
+# 6) Create bot.service
+###################################################################
+echo -e "${YELLOW}[6/7] Installing bot.service...${NC}"
 
 cat >/etc/systemd/system/bot.service <<EOF
 [Unit]
 Description=Deklan Node Bot
-After=network-online.target
+After=network-online.target docker.service
 Wants=network-online.target
+
+StartLimitIntervalSec=60
+StartLimitBurst=20
 
 [Service]
 Type=simple
 User=root
-EnvironmentFile=-$BOT_DIR/.env
 WorkingDirectory=$BOT_DIR
-ExecStart=$BOT_DIR/.venv/bin/python $BOT_DIR/bot.py
+EnvironmentFile=-$BOT_DIR/.env
+
+ExecStart=/bin/bash -c '
+  if [ -x "$BOT_DIR/.venv/bin/python" ]; then
+    exec $BOT_DIR/.venv/bin/python $BOT_DIR/bot.py;
+  else
+    exec python3 $BOT_DIR/bot.py;
+  fi
+'
 
 Restart=always
 RestartSec=3
 KillMode=mixed
 LimitNOFILE=65535
 
-# Logging
 StandardOutput=journal
 StandardError=journal
+LogRateLimitIntervalSec=0
+LogRateLimitBurst=0
+
 Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONIOENCODING=UTF-8"
 
-# Security
 NoNewPrivileges=yes
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
 
-TimeoutStopSec=20
+TimeoutStopSec=25
 
 [Install]
 WantedBy=multi-user.target
@@ -147,9 +198,9 @@ msg "bot.service installed & running ✅"
 
 
 ###################################################################
-# 6) Install monitor.timer
+# 7) Monitor Timer
 ###################################################################
-echo -e "${YELLOW}[6/7] Installing monitor timer...${NC}"
+echo -e "${YELLOW}[7/7] Installing monitor timer...${NC}"
 
 cat >/etc/systemd/system/monitor.service <<EOF
 [Unit]
@@ -157,21 +208,22 @@ Description=Deklan Node Monitor (oneshot)
 
 [Service]
 Type=oneshot
-EnvironmentFile=-$BOT_DIR/.env
 WorkingDirectory=$BOT_DIR
+EnvironmentFile=-$BOT_DIR/.env
 ExecStart=$BOT_DIR/.venv/bin/python $BOT_DIR/monitor.py
+
 StandardOutput=journal
 StandardError=journal
+Environment="PYTHONUNBUFFERED=1"
 EOF
+
 
 cat >/etc/systemd/system/monitor.timer <<EOF
 [Unit]
 Description=Run Deklan Node Monitor
-After=network-online.target
-Wants=network-online.target
 
 [Timer]
-OnBootSec=90
+OnBootSec=2m
 OnUnitActiveSec=3h
 Persistent=true
 Unit=monitor.service
@@ -180,37 +232,20 @@ Unit=monitor.service
 WantedBy=timers.target
 EOF
 
-
-# Interval override via MONITOR_EVERY_MINUTES
-MIN=$(grep '^MONITOR_EVERY_MINUTES=' .env | cut -d'=' -f2 || echo "")
-if [[ "$MIN" =~ ^[0-9]+$ ]]; then
-  HOURS=$(( MIN / 60 ))
-  REM=$(( MIN % 60 ))
-  INTERVAL=""
-  [[ $HOURS -gt 0 ]] && INTERVAL="${HOURS}h"
-  [[ $REM -gt 0 ]] && INTERVAL="${INTERVAL}${REM}m"
-
-  if [[ -n "$INTERVAL" ]]; then
-    sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=$INTERVAL/" \
-      /etc/systemd/system/monitor.timer
-    msg "Monitor interval override → $INTERVAL"
-  fi
-fi
-
 systemctl daemon-reload
 systemctl enable --now monitor.timer
-msg "monitor.timer installed & active ✅"
+msg "monitor.timer installed ✅"
 
 
 ###################################################################
-# 7) DONE
+# DONE
 ###################################################################
 echo -e "
-${GREEN}✅ INSTALLATION COMPLETE!
+${GREEN}✅ INSTALLATION COMPLETE
 ------------------------------------
 Check bot:        systemctl status bot
-Check monitor:    systemctl status monitor.timer
+Monitor timer:    systemctl status monitor.timer
 Force monitor:    systemctl start monitor.service
-Bot logs:         journalctl -u bot -f
+Live logs:        journalctl -u bot -f
 ${NC}
 "
