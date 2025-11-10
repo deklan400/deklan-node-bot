@@ -22,7 +22,7 @@ from telegram.ext import (
 # LOAD ENV
 # =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-CHAT_ID = os.getenv("CHAT_ID", "")
+CHAT_ID = str(os.getenv("CHAT_ID", ""))
 NODE_NAME = os.getenv("NODE_NAME", "deklan-node")
 
 SERVICE = os.getenv("SERVICE_NAME", "gensyn")
@@ -40,13 +40,14 @@ DANGER_PASS = os.getenv("DANGER_PASS", "")
 # VALIDATION
 # =========================
 if not BOT_TOKEN or not CHAT_ID:
-    raise SystemExit("❌ BOT_TOKEN / CHAT_ID tidak ditemukan — edit .env!")
+    raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — edit .env & restart bot")
 
 
 # =========================
 # HELPERS
 # =========================
 def _shell(cmd: str) -> str:
+    """Run safe shell command"""
     try:
         return subprocess.check_output(
             cmd, shell=True, stderr=subprocess.STDOUT, text=True
@@ -56,10 +57,11 @@ def _shell(cmd: str) -> str:
 
 
 def _authorized(update: Update) -> bool:
+    """Check security: CHAT + ALLOWED_USER_IDS"""
     uid = str(update.effective_user.id)
-    if str(update.effective_chat.id) != str(CHAT_ID):
-        return False
-    return not ALLOWED_USER_IDS or uid in ALLOWED_USER_IDS or uid == CHAT_ID
+    return (update.effective_chat.id == int(CHAT_ID)) and (
+        not ALLOWED_USER_IDS or uid in ALLOWED_USER_IDS or uid == CHAT_ID
+    )
 
 
 def _service_active() -> bool:
@@ -90,6 +92,7 @@ def _round():
 
 
 def _stats() -> str:
+    """Hardware metrics"""
     try:
         cpu = psutil.cpu_percent(interval=0.6)
         vm = psutil.virtual_memory()
@@ -107,16 +110,15 @@ def _stats() -> str:
 
 
 # =========================
-# CLEANUP (DANGER ZONE)
+# CLEAN / DANGER ZONE
 # =========================
 def _rm_node():
     cmds = [
         "systemctl stop gensyn || true",
         "systemctl disable gensyn || true",
         "rm -f /etc/systemd/system/gensyn.service",
-        "systemctl daemon-reload",
-        "rm -rf /root/deklan || true",
         "rm -rf /home/gensyn/rl_swarm || true",
+        "systemctl daemon-reload",
     ]
     return "\n".join(_shell(c) for c in cmds)
 
@@ -213,10 +215,10 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = q.data
 
-    # === DANGER ZONE ===
+    # ===== DANGER ZONE =====
     if action == "dz":
         return await q.edit_message_text(
-            "⚠️ *Danger Zone — password required*",
+            "⚠️ *Danger Zone — Password Required*",
             parse_mode="Markdown",
             reply_markup=_danger_menu()
         )
@@ -231,13 +233,13 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["awaiting_password"] = action
         return
 
-    # === NORMAL ACTIONS ===
+    # ===== NORMAL ACTIONS =====
     if action == "status":
         badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
         return await q.edit_message_text(
             f"📟 *{NODE_NAME}*\nStatus: *{badge}*\n\n{_stats()}",
             parse_mode="Markdown",
-            reply_markup=_main_menu()
+            reply_markup=_main_menu(),
         )
 
     if action == "start":
@@ -254,20 +256,19 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if action == "logs":
         logs = _logs(LOG_LINES)
-        if len(logs) > 3600:
-            logs = logs[-3600:]
+        logs = logs[-3600:] if len(logs) > 3600 else logs
         return await q.edit_message_text(
             f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```",
             parse_mode="Markdown",
-            reply_markup=_main_menu()
+            reply_markup=_main_menu(),
         )
 
     if action == "round":
         info = _round()
         return await q.edit_message_text(
-            f"ℹ️ *Round Info*\n```\n{info}\n```",
+            f"ℹ️ *Last Round*\n```\n{info}\n```",
             parse_mode="Markdown",
-            reply_markup=_main_menu()
+            reply_markup=_main_menu(),
         )
 
     if action == "help":
@@ -284,7 +285,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================
-# PASSWORD INPUT
+# PASSWORD HANDLER
 # =========================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "awaiting_password" not in context.user_data:
