@@ -2,7 +2,7 @@
 set -e
 
 ###################################################################
-#   DEKLAN NODE BOT INSTALLER — v2.0
+#   DEKLAN NODE BOT INSTALLER — v2.1
 #   Telegram control + Auto-monitor for RL-Swarm
 ###################################################################
 
@@ -27,6 +27,8 @@ err()  { echo -e "${RED}❌ $1${NC}"; }
 
 banner
 
+BOT_DIR="/opt/deklan-node-bot"
+
 
 ###################################################################
 # 1) Install Base Dependencies
@@ -45,14 +47,12 @@ msg "Dependencies OK"
 ###################################################################
 echo -e "${YELLOW}[2/7] Preparing bot repository...${NC}"
 
-BOT_DIR="/opt/deklan-node-bot"
-
 if [[ ! -d "$BOT_DIR" ]]; then
   git clone https://github.com/deklan400/deklan-node-bot "$BOT_DIR"
   msg "Repo cloned → $BOT_DIR"
 else
-  warn "Repo exists → update?"
-  read -p "Update repo? [Y/n] > " ans
+  warn "Repository already exists"
+  read -p "Update repo now? [Y/n] > " ans
   if [[ ! "$ans" =~ ^[Nn]$ ]]; then
     cd "$BOT_DIR" && git pull
     msg "Repo updated"
@@ -131,7 +131,7 @@ msg "bot.service installed & running"
 ###################################################################
 # 6) Install monitor.service + monitor.timer
 ###################################################################
-echo -e "${YELLOW}[6/7] Installing monitor.timer...${NC}"
+echo -e "${YELLOW}[6/7] Installing monitor timer...${NC}"
 
 cat >/etc/systemd/system/monitor.service <<EOF
 [Unit]
@@ -163,6 +163,7 @@ Unit=monitor.service
 WantedBy=timers.target
 EOF
 
+
 # Auto customize interval if MONITOR_EVERY_MINUTES exists
 if grep -q '^MONITOR_EVERY_MINUTES=' .env; then
   MIN=$(grep '^MONITOR_EVERY_MINUTES=' .env | cut -d'=' -f2)
@@ -177,7 +178,7 @@ if grep -q '^MONITOR_EVERY_MINUTES=' .env; then
     if [[ -n "$INTERVAL" ]]; then
       sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=$INTERVAL/" \
         /etc/systemd/system/monitor.timer
-      msg "Monitor interval overridden → $INTERVAL"
+      msg "Monitor interval override → $INTERVAL"
     fi
   fi
 fi
