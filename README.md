@@ -20,51 +20,45 @@
 
 ## 🧠 Overview
 
-**Deklan Node Bot** memudahkan kontrol & monitoring node **Gensyn RL-Swarm**  
-↪ lewat Telegram ✅  
-↪ tanpa SSH ✅  
-↪ otomatis pantau ✅  
+**Deklan Node Bot** memudahkan kontrol & monitoring node **Gensyn RL-Swarm**
+langsung dari Telegram.
 
-Kamu bisa:
-✅ Start / Stop / Restart node  
-✅ Baca logs langsung di Telegram  
-✅ Cek CPU, RAM, Disk & Round  
-✅ Notifikasi otomatis kalau node mati  
-✅ Auto-restart bila down  
+✔ Tanpa SSH  
+✔ Otomatis pantau node  
+✔ Auto-restart jika mati  
 
-> Semua cukup dari HP 📱
+📱 Cukup dari HP!
 
 ---
 
 ## ⚡ Features
 
-✅ CPU / RAM / Disk / Uptime checker  
-✅ Start / Stop / Restart node (systemd)  
-✅ Cek round terbaru  
-✅ Ambil log terakhir  
-✅ Auto monitoring tiap X menit  
-✅ Auto restart + auto notify  
-✅ Telegram UI tombol  
+✅ Start / Stop / Restart node  
+✅ Show logs dari Telegram  
+✅ CPU, RAM, Disk, Uptime monitor  
+✅ Cek Round terakhir  
+✅ Auto-monitor tiap X menit  
+✅ Auto Restart + Notifikasi  
+✅ Telegram Inline Keyboard  
 ✅ User Allowlist (AMAN)  
-✅ systemd background  
-✅ Zero-maintenance  
+✅ Systemd background  
 
-> FULL CONTROL — langsung dari Telegram 🚀  
+> FULL CONTROL — langsung dari Telegram 🚀
 
 ---
 
 ## 🚀 Quick Install
 
-> Jalankan ini di VPS 🔽
+> Jalankan di VPS (Ubuntu 22.04+)
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh)
 ```
 
-Bot otomatis:
-✅ Install dependency  
-✅ Setup folder  
-✅ Install + enable services  
+✅ Install dependencies  
+✅ Setup venv + env  
+✅ Install services  
+✅ Start bot & monitoring  
 
 🎉 DONE
 
@@ -72,7 +66,7 @@ Bot otomatis:
 
 ## ⚙️ Konfigurasi `.env`
 
-Edit file:
+Edit config:
 
 ```bash
 nano /opt/deklan-node-bot/.env
@@ -81,30 +75,36 @@ nano /opt/deklan-node-bot/.env
 Contoh:
 
 ```
-BOT_TOKEN=YOUR_BOT_TOKEN
+BOT_TOKEN=YOUR_TELEGRAM_TOKEN
 CHAT_ID=123456789
 ALLOWED_USER_IDS=123456789
 NODE_NAME=Gensyn-VPS-01
+SERVICE_NAME=gensyn
 MONITOR_EVERY_MINUTES=180
-LOG_LINES=50
+LOG_LINES=60
+ENABLE_DANGER_ZONE=0
+DANGER_PASS=CHANGEME
 ```
 
 | Key | Wajib | Deskripsi |
 |-----|:----:|-----------|
 | BOT_TOKEN | ✅ | Token Telegram |
 | CHAT_ID | ✅ | ID admin |
-| ALLOWED_USER_IDS | ❌ | Daftar allowed user |
-| NODE_NAME | ❌ | Nama VPS |
-| MONITOR_EVERY_MINUTES | ❌ | Interval |
-| LOG_LINES | ❌ | Baris log |
+| ALLOWED_USER_IDS | ❌ | Multi-user whitelist |
+| SERVICE_NAME | ❌ | systemd service |
+| NODE_NAME | ❌ | Label VPS |
+| MONITOR_EVERY_MINUTES | ❌ | Interval monitor |
+| LOG_LINES | ❌ | Log count |
+| ENABLE_DANGER_ZONE | ❌ | Show menu berbahaya |
+| DANGER_PASS | ❌ | Password Danger-Zone |
 
-⚠ Minimal wajib → BOT_TOKEN + CHAT_ID  
+> ⚠ Minimal wajib → BOT_TOKEN + CHAT_ID
 
 ---
 
-## 🎛 Systemd Service
+## 🎛 Systemd Commands
 
-🔎 Check bot
+🔎 Status bot
 ```bash
 systemctl status bot
 ```
@@ -134,12 +134,9 @@ systemctl status monitor.timer
 ## 💬 Telegram Menu
 
 Ketik:
-
 ```
 /start
 ```
-
-Tombol muncul:
 
 | Tombol | Fungsi |
 |--------|--------|
@@ -147,21 +144,47 @@ Tombol muncul:
 | 🟢 Start | Start node |
 | 🔴 Stop | Stop node |
 | 🔁 Restart | Restart node |
-| 📜 Logs | Logs |
-| 🔢 Round | Round terbaru |
+| 📜 Logs | Logs terakhir |
+| ℹ️ Round | Info round |
 
 ---
 
-## 🔔 Sample Alerts
+## ⚠️ DANGER ZONE
+
+> Default → **OFF**
+
+Aktifkan via `.env`:
+
+```
+ENABLE_DANGER_ZONE=1
+DANGER_PASS=SANDIKU
+```
+
+Menu Tambahan:
+
+| Tombol | Aksi |
+|--------|------|
+| 🔥 Remove RL-Swarm | Hapus node |
+| 🐋 Clean Docker | Remove Docker |
+| 💾 Remove Swap | Hapus swapfile |
+| 🧹 Full Clean | Bersih total |
+| 🔁 Reboot VPS | Restart server |
+
+> ⚠ PASSWORD WAJIB  
+> ⚠ Pastikan paham sebelum eksekusi
+
+---
+
+## 🔔 Contoh Notifikasi
 
 ✅ Node OK
 ```
-✅ Gensyn-01 OK
+✅ Gensyn-01 OK @ 20:31
 CPU 31% • RAM 67% • Disk 70%
 Round: 18735
 ```
 
-⛔ Node mati
+⛔ Node Down
 ```
 🚨 Gensyn-01 DOWN
 Attempting auto-restart…
@@ -190,8 +213,20 @@ CPU 30% • RAM 63% • Disk 71%
 ├── install.sh
 ├── requirements.txt
 ├── bot.service
+├── monitor.service
+├── monitor.timer
 ├── .env
 └── .env.example
+```
+
+---
+
+## 🔄 Update Bot
+
+```bash
+cd /opt/deklan-node-bot
+git pull
+systemctl restart bot
 ```
 
 ---
@@ -209,21 +244,21 @@ systemctl daemon-reload
 
 ---
 
-## 🌙 Screenshots
+## ❗ Troubleshooting
 
-> Tambahkan folder `images/`
-
-```
-/images/menu.png
-/images/status.png
-/images/logs.png
-```
+| Issue | Solusi |
+|-------|--------|
+| Bot tidak respon | restart bot |
+| Timer tidak jalan | cek monitor.timer |
+| Node STOPPED | cek `SERVICE_NAME` |
+| Logs kosong | tambah `LOG_LINES` |
+| Danger zone hilang | ENABLE_DANGER_ZONE=1 |
 
 ---
 
 ## 🛣 Roadmap
 
-- Multi-node support  
+- Multi-Node support  
 - Web dashboard  
 - Auto update  
 - Multi alert rules  
@@ -231,6 +266,6 @@ systemctl daemon-reload
 
 ---
 
-## ❤️ Credits  
+## ❤️ Credits
 
 Built with ❤️ by **Deklan**
