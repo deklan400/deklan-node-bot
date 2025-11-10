@@ -24,20 +24,20 @@ from telegram.ext import (
 # ======================================================
 env = os.getenv
 
-BOT_TOKEN   = env("BOT_TOKEN", "")
-CHAT_ID     = str(env("CHAT_ID", ""))
+BOT_TOKEN = env("BOT_TOKEN", "")
+CHAT_ID = str(env("CHAT_ID", ""))
 
-NODE_NAME   = env("NODE_NAME", "deklan-node")
+NODE_NAME = env("NODE_NAME", "deklan-node")
 
-SERVICE     = env("SERVICE_NAME", "gensyn")
-LOG_LINES   = int(env("LOG_LINES", "80"))
+SERVICE = env("SERVICE_NAME", "gensyn")
+LOG_LINES = int(env("LOG_LINES", "80"))
 
-RL_DIR      = env("RL_DIR", "/root/rl_swarm")
-KEY_DIR     = env("KEY_DIR", "/root/deklan")
+RL_DIR = env("RL_DIR", "/root/rl_swarm")
+KEY_DIR = env("KEY_DIR", "/root/deklan")
 
-ROUND_GREP  = env("ROUND_GREP_PATTERN", "Joining round:")
+ROUND_GREP = env("ROUND_GREP_PATTERN", "Joining round:")
 
-LOG_MAX     = int(env("LOG_MAX_CHARS", "3500"))
+LOG_MAX = int(env("LOG_MAX_CHARS", "3500"))
 
 MONITOR_TRY_REINSTALL = env("MONITOR_TRY_REINSTALL", "1") == "1"
 
@@ -46,23 +46,20 @@ ALLOWED_USER_IDS = [
 ]
 
 ENABLE_DANGER = env("ENABLE_DANGER_ZONE", "0") == "1"
-DANGER_PASS   = env("DANGER_PASS", "")
+DANGER_PASS = env("DANGER_PASS", "")
 
 AUTO_REPO = env(
     "AUTO_INSTALLER_GITHUB",
     "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
 )
 
-
 if not BOT_TOKEN or not CHAT_ID:
     raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — set .env then restart bot")
-
 
 # ======================================================
 # HELPERS
 # ======================================================
 def _shell(cmd: str) -> str:
-    """Run safe shell command & capture output."""
     try:
         return subprocess.check_output(
             cmd, shell=True, stderr=subprocess.STDOUT, text=True
@@ -72,15 +69,11 @@ def _shell(cmd: str) -> str:
 
 
 def _authorized(update: Update) -> bool:
-    """Require chat + optional allowlist."""
     uid = str(update.effective_user.id)
-
     if str(update.effective_chat.id) != CHAT_ID:
         return False
-
     if not ALLOWED_USER_IDS:
         return uid == CHAT_ID
-
     return uid == CHAT_ID or uid in ALLOWED_USER_IDS
 
 
@@ -109,13 +102,12 @@ def _stop():
 
 def _round():
     cmd = rf"journalctl -u {SERVICE} --no-pager | grep -E '{ROUND_GREP}' | tail -n1"
-    line = _shell(cmd)
-    return line if line else "(round info not found)"
+    return _shell(cmd) or "(round info not found)"
 
 
 def _stats():
     try:
-        cpu = psutil.cpu_percent(interval=0.6)
+        cpu = psutil.cpu_percent(interval=0.5)
         vm = psutil.virtual_memory()
         du = psutil.disk_usage("/")
         uptime_sec = time.time() - psutil.boot_time()
@@ -132,23 +124,20 @@ def _stats():
 
 
 # ======================================================
-# RUN REMOTE SCRIPT
+# REMOTE SCRIPT EXEC
 # ======================================================
 def _run_remote(fname: str) -> str:
-    """Download + exec script from autoinstall repo."""
     url = f"{AUTO_REPO}{fname}"
     tmp = f"/tmp/{fname}"
-
     try:
         subprocess.check_output(f"curl -s -o {tmp} {url}", shell=True)
         subprocess.check_output(f"chmod +x {tmp}", shell=True)
-        out = subprocess.check_output(
+        return subprocess.check_output(
             f"bash {tmp}",
             shell=True,
             stderr=subprocess.STDOUT,
             text=True
         )
-        return out
     except subprocess.CalledProcessError as e:
         return e.output or "ERR"
 
@@ -235,7 +224,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = q.data
 
-    # Installer
     if action == "installer":
         return await q.edit_message_text(
             "🧩 *Installer Menu*",
@@ -251,7 +239,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # Danger Zone
     if action == "dz":
         return await q.edit_message_text(
             "⚠️ *Danger Zone — Password Required*",
@@ -265,14 +252,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=_main_menu()
         )
 
-    if action.startswith("dz_"):
-        if not DANGER_PASS:
-            return await q.edit_message_text("❌ Danger Zone disabled.")
-        await q.edit_message_text("Send password:")
-        context.user_data["awaiting_password"] = action
-        return
-
-    # Basic OPS
+    # Node Ops
     if action == "status":
         badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
         return await q.edit_message_text(
@@ -324,7 +304,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ======================================================
-# TEXT HANDLER
+# TEXT
 # ======================================================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -356,7 +336,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # Danger password input
+    # Danger Zone
     if "awaiting_password" not in context.user_data:
         return
 
@@ -389,13 +369,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ======================================================
-# CORE
+# MAIN
 # ======================================================
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start",   start))
-    app.add_handler(CommandHandler("help",    cmd_help))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CallbackQueryHandler(handle_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
