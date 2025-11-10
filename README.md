@@ -1,104 +1,103 @@
-# 🤖 Deklan Node Bot — Telegram Control & Monitoring
+# 🤖 Deklan Node Bot  
+> Telegram Control & Auto-Monitor for Gensyn RL-Swarm Nodes 🚀  
 
-Bot Telegram untuk monitoring & mengendalikan **Gensyn RL-Swarm Node** langsung dari HP 📱  
-Tanpa repot login server! Full otomatis.  
+Bot ini memungkinkan kamu memantau & mengontrol node Gensyn dari Telegram.  
+Tanpa perlu login server → praktis, aman, otomatis ✅  
 
 ---
 
 ## ✨ Fitur Utama
 
-✅ Cek status CPU / RAM / Disk / Uptime  
+✅ Cek CPU / RAM / Disk / Uptime  
 ✅ Start / Stop / Restart Node  
-✅ Lihat Logs  
-✅ Cek Round terbaru  
-✅ Akses aman (ALLOWLIST)  
+✅ Ambil Logs terbaru  
+✅ Cek Round terakhir  
+✅ UI tombol Telegram (bukan command)  
 ✅ Auto-monitor tiap X menit  
-✅ systemd background service  
-✅ Menu tombol Telegram  
+✅ Auto restart + notifikasi  
+✅ Akses aman (whitelist user)  
+✅ Systemd service → auto start  
 
 ---
 
-## 🚀 1) Instalasi Cepat
+## 🚀 Instalasi Cepat
 
-> Jalankan perintah ini:
+> Jalankan perintah ini di VPS:
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh)
 ```
 
 Bot otomatis:
-✅ Install dependensi  
-✅ Setup folder  
-✅ Install service  
-✅ Auto-start  
+✅ Install dependency  
+✅ Clone repo  
+✅ Setup systemd  
+✅ Start bot  
 
 ---
 
-## ⚙️ 2) Konfigurasi
+## ⚙️ Konfigurasi `.env`
 
-Buka file konfigurasi:
+Edit:
 
 ```bash
 nano /opt/deklan-node-bot/.env
 ```
 
-Contoh isi:
+Contoh:
 
 ```
 BOT_TOKEN=123456:abcdefgxxxxxxxx
 CHAT_ID=12345678
-ALLOWED_USER_IDS=123456,987654
-NODE_NAME=Gensyn-01
-MONITOR_INTERVAL=10
+ALLOWED_USER_IDS=1234,5678
+NODE_NAME=Gensyn-VPS-01
+MONITOR_EVERY_MINUTES=180
+LOG_LINES=50
 ```
 
-| Key | Fungsi |
-|-----|--------|
-| BOT_TOKEN | Token Telegram Bot |
-| CHAT_ID | ID Admin |
-| ALLOWED_USER_IDS | (opsional) daftar user |
-| NODE_NAME | Nama node |
-| MONITOR_INTERVAL | Cek otomatis (menit) |
+| Key | Wajib | Fungsi |
+|-----|:----:|--------|
+| BOT_TOKEN | ✅ | Token bot |
+| CHAT_ID | ✅ | ID admin |
+| ALLOWED_USER_IDS | ❌ | Banyak user |
+| NODE_NAME | ❌ | Nama VPS |
+| MONITOR_EVERY_MINUTES | ❌ | Interval |
+| LOG_LINES | ❌ | Baris log |
 
-> Minimal wajib: **BOT_TOKEN + CHAT_ID**
+> Minimal wajib → BOT_TOKEN + CHAT_ID ✅  
 
 ---
 
-## 🏃 3) Jalankan / Cek Status
+## 🎛 Systemd
 
-Cek status bot:
-
+### Cek status bot
 ```bash
 systemctl status bot
 ```
 
-Restart bot:
-
+### Restart bot
 ```bash
 systemctl restart bot
 ```
 
-Monitoring timer:
-
+### Live logs
 ```bash
-systemctl start monitor.timer
+journalctl -u bot -f
 ```
 
-Cek timer:
-
-```bash
-systemctl status monitor.timer
-```
-
-Jalankan monitor manual:
-
+### Jalankan monitor manual
 ```bash
 systemctl start monitor.service
 ```
 
+### Cek timer
+```bash
+systemctl status monitor.timer
+```
+
 ---
 
-## 💬 4) Telegram Commands
+## 💬 Telegram Control
 
 Ketik:
 
@@ -106,100 +105,101 @@ Ketik:
 /start
 ```
 
-→ Bot akan tampilkan menu tombol ✅  
+Bot menampilkan tombol menu:
 
-### Aksi:
-
-| Menu | Fungsi |
-|------|--------|
-| ✅ Status | Info CPU / RAM / Disk / Up |
-| ▶ Start | Start node |
-| ⏹ Stop | Stop node |
-| 🔄 Restart | Restart node |
-| 📜 Logs | Tampilkan logs |
-| 🔢 Round | Round terbaru |
-
----
-
-## 📁 5) Lokasi File Penting
-
-| Lokasi | Fungsi |
+| Tombol | Fungsi |
 |--------|--------|
-| `/opt/deklan-node-bot/` | Folder bot |
-| `bot.py` | Main bot |
-| `.env` | Config |
-| `bot.service` | systemd bot |
-| `monitor.*` | Monitoring service |
+| 📊 Status | CPU/RAM/Disk/Uptime |
+| 🟢 Start | Start service |
+| 🔴 Stop | Stop service |
+| 🔁 Restart | Restart |
+| 📜 Logs | Logs |
+| ℹ️ Round | Round |
 
 ---
 
-## ⏱ 6) Auto Monitoring
-
-✅ Tiap X menit bot cek:
-- Node berjalan atau mati
-- Round naik / macet
-
-Bila ada masalah = **notif Telegram otomatis** ✅  
-
----
-
-## ❌ Uninstall
+## 🔔 Contoh Notifikasi
 
 ```
+✅ Gensyn-01 OK @ 2025-01-01 10:33
+CPU 35% • RAM 62% • Disk 70%
+Joining round: 18735
+```
+
+Jika node mati:
+```
+🚨 Gensyn-01 DOWN @ 10:33
+Attempting auto-restart…
+```
+
+Jika pulih:
+```
+🟢 Gensyn-01 recovered
+CPU 35% • RAM 61% • Disk 71%
+```
+
+Jika gagal:
+```
+❌ FAILED TO RECOVER
+(last 80 log lines)
+```
+
+---
+
+## 📁 Struktur Repo
+
+```
+/opt/deklan-node-bot
+├── bot.py
+├── monitor.py
+├── install.sh
+├── requirements.txt
+├── bot.service
+├── .env
+└── .env.example
+```
+
+---
+
+## 🗑 Uninstall
+
+```bash
 systemctl stop bot monitor.service monitor.timer
 systemctl disable bot monitor.service monitor.timer
-rm /etc/systemd/system/bot.service
-rm /etc/systemd/system/monitor.*
+rm -f /etc/systemd/system/bot.service
+rm -f /etc/systemd/system/monitor.*
 rm -rf /opt/deklan-node-bot
+systemctl daemon-reload
 ```
 
 ---
 
-## 🧩 Struktur Repo
+## 🔌 Service Target
+
+Bot mengontrol service bernama:
 
 ```
-deklan-node-bot
-│── bot.py
-│── install.sh
-│── requirements.txt
-│── .env.example
-└── bot.service
+gensyn
 ```
 
----
-
-## 📡 Contoh Output Telegram
-
+> Pastikan node jalan via systemd:
 ```
-🟢 NODE RUNNING
-CPU: 35%
-RAM: 62%
-Disk: 70%
-Uptime: 12h 21m
-Round: 18735
-```
-
-atau:
-
-```
-🔴 NODE STOPPED
-Last Round: 18735
+systemctl status gensyn
 ```
 
 ---
 
 ## 🛣 Roadmap
 
-- Multi-node
-- Web UI
-- Cluster manager
-- Auto-update
-- Auto backup
+- Multi-server support  
+- Web dashboard  
+- Auto update node  
+- Multi alert rules  
+- Multi log collector  
 
 ---
 
-## ❤️ Credits
+## ❤️ Credits  
 
 Built with ❤️ by **Deklan**
 
-END OF README
