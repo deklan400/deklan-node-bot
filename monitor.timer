@@ -1,19 +1,19 @@
 [Unit]
-Description=Run Deklan Node Monitor every X hours
+Description=Run Deklan Node Monitor periodically
 After=network-online.target
 Wants=network-online.target
 
 [Timer]
-# Jalan 5 menit setelah boot
+# Start 5 minutes after boot
 OnBootSec=5m
 
-# Default interval tiap 3 jam
+# Default interval (fallback)
+# Akan di-override oleh MONITOR_EVERY_MINUTES dalam .env
 OnUnitActiveSec=3h
 
-# Menyimpan waktu terakhir sehingga tetap terjadwal meski reboot
+# Remember schedule across reboot
 Persistent=true
 
-# Fokus menjalankan monitor.service
 Unit=monitor.service
 
 [Install]
