@@ -3,6 +3,8 @@ import time
 import psutil
 import subprocess
 from datetime import timedelta
+from functools import partial
+
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -12,7 +14,9 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
     ContextTypes,
+    filters,
 )
 
 
@@ -30,6 +34,9 @@ ALLOWED_USER_IDS = [
     i.strip() for i in os.getenv("ALLOWED_USER_IDS", "").split(",") if i.strip()
 ]
 
+ENABLE_DANGER = os.getenv("ENABLE_DANGER_ZONE", "0") == "1"
+DANGER_PASS = os.getenv("DANGER_PASS", "")   # Password wajib
+
 
 # =========================
 # VALIDATION
@@ -42,7 +49,18 @@ if not BOT_TOKEN or not CHAT_ID:
 # HELPERS
 # =========================
 def _shell(cmd: str) -> str:
-    """Run shell cmd safely & return string."""
+    """Run normal shell command"""
+    try:
+        out = subprocess.check_output(
+            cmd, shell=True, stderr=subprocess.STDOUT, text=True
+        )
+        return out.strip()
+    except subprocess.CalledProcessError as e:
+        return e.output.strip()
+
+
+def _run_safe(cmd: str) -> str:
+    """Run DANGER command"""
     try:
         out = subprocess.check_output(
             cmd, shell=True, stderr=subprocess.STDOUT, text=True
@@ -106,22 +124,78 @@ def _sys_stats() -> str:
 
 
 # =========================
+# DANGER ACTIONS
+# =========================
+def _rm_node():
+    cmds = [
+        "systemctl stop gensyn || true",
+        "systemctl disable gensyn || true",
+        "rm -f /etc/systemd/system/gensyn.service",
+        "rm -rf /root/deklan || true",
+        "rm -rf /opt/rl_swarm || true",
+        "systemctl daemon-reload",
+    ]
+    return "\n".join(_run_safe(c) for c in cmds)
+
+
+def _rm_docker():
+    cmds = [
+        "systemctl stop docker || true",
+        "systemctl disable docker || true",
+        "apt purge -y docker* containerd* || true",
+        "rm -rf /var/lib/docker /var/lib/containerd",
+    ]
+    return "\n".join(_run_safe(c) for c in cmds)
+
+
+def _rm_swap():
+    cmds = [
+        "swapoff -a || true",
+        "rm -f /swapfile || true",
+        "sed -i '/swapfile/d' /etc/fstab",
+    ]
+    return "\n".join(_run_safe(c) for c in cmds)
+
+
+def _clean_all():
+    return "\n".join([
+        _rm_node(),
+        _rm_docker(),
+        _rm_swap()
+    ])
+
+
+# =========================
 # MENU
 # =========================
 def _main_menu():
-    return InlineKeyboardMarkup(
+    rows = [
+        [InlineKeyboardButton("📊 Status", callback_data="status")],
         [
-            [InlineKeyboardButton("📊 Status", callback_data="status")],
-            [
-                InlineKeyboardButton("🟢 Start", callback_data="start"),
-                InlineKeyboardButton("🔴 Stop", callback_data="stop"),
-            ],
-            [InlineKeyboardButton("🔁 Restart", callback_data="restart")],
-            [InlineKeyboardButton("📜 Logs", callback_data="logs")],
-            [InlineKeyboardButton("ℹ️ Round", callback_data="round")],
-            [InlineKeyboardButton("❓ Help", callback_data="help")],
-        ]
-    )
+            InlineKeyboardButton("🟢 Start", callback_data="start"),
+            InlineKeyboardButton("🔴 Stop", callback_data="stop"),
+        ],
+        [InlineKeyboardButton("🔁 Restart", callback_data="restart")],
+        [InlineKeyboardButton("📜 Logs", callback_data="logs")],
+        [InlineKeyboardButton("ℹ️ Round", callback_data="round")],
+        [InlineKeyboardButton("❓ Help", callback_data="help")],
+    ]
+
+    if ENABLE_DANGER:
+        rows.append([InlineKeyboardButton("⚠️ Danger Zone", callback_data="dz")])
+
+    return InlineKeyboardMarkup(rows)
+
+
+def _danger_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔥 Remove RL-Swarm", callback_data="dz_rm_node")],
+        [InlineKeyboardButton("🐋 Clean Docker", callback_data="dz_rm_docker")],
+        [InlineKeyboardButton("💾 Remove Swap", callback_data="dz_rm_swap")],
+        [InlineKeyboardButton("🧹 Full Clean", callback_data="dz_clean_all")],
+        [InlineKeyboardButton("🔁 Reboot VPS", callback_data="dz_reboot")],
+        [InlineKeyboardButton("⬅ Back", callback_data="back")],
+    ])
 
 
 # =========================
@@ -160,29 +234,46 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = q.data
 
-    # Status
+    # DANGER MENU
+    if action == "dz":
+        return await q.edit_message_text(
+            "⚠️ *Danger Zone*\nPassword required.",
+            parse_mode="Markdown",
+            reply_markup=_danger_menu()
+        )
+
+    if action == "back":
+        return await q.edit_message_text(
+            "⚡ Main Menu", reply_markup=_main_menu()
+        )
+
+    if action.startswith("dz_"):
+        if not DANGER_PASS:
+            return await q.edit_message_text("❌ Danger Zone disabled (no password).")
+
+        await q.edit_message_text("Send password:")
+        context.user_data["awaiting_password"] = action
+        return
+
+    # Normal Action
     if action == "status":
         active = _service_active()
         badge = "✅ RUNNING" if active else "⛔ STOPPED"
         msg = f"📟 *{NODE_NAME}*\nStatus: *{badge}*\n\n{_sys_stats()}"
         return await q.edit_message_text(msg, parse_mode="Markdown", reply_markup=_main_menu())
 
-    # Start
     if action == "start":
         _service_start()
         return await q.edit_message_text("🟢 Starting…", reply_markup=_main_menu())
 
-    # Stop
     if action == "stop":
         _service_stop()
         return await q.edit_message_text("🔴 Stopping…", reply_markup=_main_menu())
 
-    # Restart
     if action == "restart":
         _service_restart()
         return await q.edit_message_text("🔁 Restarting…", reply_markup=_main_menu())
 
-    # Logs
     if action == "logs":
         logs = _service_logs(LOG_LINES)
         if len(logs) > 3600:
@@ -193,7 +284,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=_main_menu(),
         )
 
-    # Round
     if action == "round":
         info = _round_info()
         return await q.edit_message_text(
@@ -202,7 +292,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=_main_menu(),
         )
 
-    # Help
     if action == "help":
         return await q.edit_message_text(
             "✅ *Commands:*\n"
@@ -216,15 +305,34 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _authorized(update):
-        return await update.message.reply_text("❌ Unauthorized.")
-    active = _service_active()
-    badge = "✅ RUNNING" if active else "⛔ STOPPED"
-    await update.message.reply_text(
-        f"📟 *{NODE_NAME}*\nStatus: *{badge}*\n\n{_sys_stats()}",
-        parse_mode="Markdown",
-    )
+# PASS INPUT
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if "awaiting_password" not in context.user_data:
+        return
+
+    action = context.user_data.pop("awaiting_password")
+    text = update.message.text.strip()
+
+    if text != DANGER_PASS:
+        return await update.message.reply_text("❌ Wrong password.")
+
+    await update.message.reply_text("✅ Verified! Running...")
+
+    if action == "dz_rm_node":
+        res = _rm_node()
+    elif action == "dz_rm_docker":
+        res = _rm_docker()
+    elif action == "dz_rm_swap":
+        res = _rm_swap()
+    elif action == "dz_clean_all":
+        res = _clean_all()
+    elif action == "dz_reboot":
+        _run_safe("reboot")
+        res = "Rebooting..."
+    else:
+        res = "Unknown action"
+
+    await update.message.reply_text(f"✅ Done\n```\n{res}\n```", parse_mode="Markdown")
 
 
 # =========================
@@ -234,8 +342,9 @@ def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", cmd_help))
-    app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("status", start))
     app.add_handler(CallbackQueryHandler(handle_button))
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), message_handler))
 
     print("✅ Bot running…")
     app.run_polling()
