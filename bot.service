@@ -1,14 +1,33 @@
 [Unit]
 Description=Deklan Node Bot
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
+Type=simple
 User=root
 WorkingDirectory=/opt/deklan-node-bot
 EnvironmentFile=/opt/deklan-node-bot/.env
+
+# Explicit python3 path
 ExecStart=/usr/bin/python3 /opt/deklan-node-bot/bot.py
+
+# Auto restart
 Restart=always
-RestartSec=10
+RestartSec=5
+
+# Improve limits
+LimitNOFILE=65535
+
+# Kill behavior
+KillMode=process
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+# Ensure environment loads properly
+Environment="PYTHONUNBUFFERED=1"
 
 [Install]
 WantedBy=multi-user.target
