@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import time
 import psutil
@@ -5,23 +6,30 @@ import subprocess
 from datetime import datetime
 import urllib.parse
 import urllib.request
+import json
 
 # ======================================================
 # ENV
 # ======================================================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-CHAT_ID = os.getenv("CHAT_ID", "")
-NODE_NAME = os.getenv("NODE_NAME", "deklan-node")
+BOT_TOKEN   = os.getenv("BOT_TOKEN", "")
+CHAT_ID     = os.getenv("CHAT_ID", "")
+NODE_NAME   = os.getenv("NODE_NAME", "deklan-node")
 
-LOG_LINES = int(os.getenv("LOG_LINES", "80"))
-SERVICE = os.getenv("SERVICE_NAME", "gensyn")  # default RL swarm service name
+SERVICE     = os.getenv("SERVICE_NAME", "gensyn")
+LOG_LINES   = int(os.getenv("LOG_LINES", "80"))
+
+AUTO_REPO = os.getenv(
+    "AUTO_INSTALLER_GITHUB",
+    "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
+)
+
+FLAG_FILE = "/tmp/.node_status.json"
 
 
 # ======================================================
-# SHELL
+# SHELL HELPERS
 # ======================================================
 def shell(cmd: str) -> str:
-    """Execute shell cmd safely."""
     try:
         return subprocess.check_output(
             cmd, shell=True, stderr=subprocess.STDOUT, text=True
@@ -50,50 +58,72 @@ def send(msg: str):
     data = urllib.parse.urlencode(payload).encode()
     try:
         urllib.request.urlopen(url, data=data, timeout=10)
-    except Exception:
+    except:
         pass
 
 
 def clean(text: str) -> str:
-    """Prevent Markdown injection."""
-    bad = ["`", "*", "_", "["]
-    for ch in bad:
+    for ch in ["`", "*", "_", "["]:
         text = text.replace(ch, "")
     return text
+
+
+# ======================================================
+# STATUS CACHE (avoid spam)
+# ======================================================
+def load_flag():
+    if not os.path.isfile(FLAG_FILE):
+        return {"last_status": "unknown"}
+    try:
+        return json.load(open(FLAG_FILE))
+    except:
+        return {"last_status": "unknown"}
+
+
+def save_flag(status: str):
+    with open(FLAG_FILE, "w") as f:
+        json.dump({"last_status": status}, f)
 
 
 # ======================================================
 # CHECKS
 # ======================================================
 def is_active() -> bool:
-    """Check if systemd service is active."""
     return shell(f"systemctl is-active {SERVICE}") == "active"
 
 
 def sys_brief() -> str:
-    """CPU / RAM / Disk mini status."""
     try:
         cpu = psutil.cpu_percent(interval=0.4)
         vm = psutil.virtual_memory()
         du = psutil.disk_usage("/")
+
         return f"CPU {cpu:.1f}% • RAM {vm.percent:.1f}% • Disk {du.percent:.1f}%"
     except:
         return "(sys info unavailable)"
 
 
+def last_round() -> str:
+    line = shell(
+        rf"journalctl -u {SERVICE} --no-pager | grep -E 'Joining round:' | tail -n1"
+    )
+    return line if line else "(round info not found)"
+
+
 def try_restart() -> bool:
-    """Restart service → return success."""
     shell(f"systemctl restart {SERVICE}")
     time.sleep(6)
     return is_active()
 
 
-def last_round() -> str:
-    """Last round log line."""
-    line = shell(
-        rf"journalctl -u {SERVICE} --no-pager | grep -E 'Joining round:' | tail -n1"
-    )
-    return line if line else "(round info not found)"
+# ======================================================
+# AUTO REPAIR
+# ======================================================
+def try_reinstall():
+    tmp = "/tmp/reinstall.sh"
+    shell(f"curl -s -o {tmp} {AUTO_REPO}reinstall.sh")
+    shell(f"chmod +x {tmp}")
+    return shell(f"bash {tmp}")
 
 
 # ======================================================
@@ -101,31 +131,50 @@ def last_round() -> str:
 # ======================================================
 def main():
     t = datetime.now().strftime("%Y-%m-%d %H:%M")
+    state = load_flag()
 
-    # ✅ Running
+    # ✅ Node running
     if is_active():
-        send(
-            f"✅ *{NODE_NAME}* OK @ {t}\n"
-            f"{sys_brief()}\n"
-            f"{last_round()}"
-        )
+        if state.get("last_status") != "up":
+            send(
+                f"✅ *{NODE_NAME}* is UP @ {t}\n"
+                f"{sys_brief()}\n"
+                f"{last_round()}"
+            )
+        save_flag("up")
         return
 
     # 🚨 DOWN
-    send(
-        f"🚨 *{NODE_NAME}* DOWN @ {t}\n"
-        f"↪ Trying restart…"
-    )
+    if state.get("last_status") != "down":
+        send(
+            f"🚨 *{NODE_NAME}* DOWN @ {t}\n"
+            f"↪ Trying restart…"
+        )
 
-    # 🔁 try auto-restart
+    # 🔁 Try restart
     if try_restart():
         send(
-            f"🟢 *{NODE_NAME}* RECOVERED*\n"
+            f"🟢 *{NODE_NAME}* RECOVERED @ {t}\n"
             f"{sys_brief()}"
         )
+        save_flag("up")
         return
 
-    # ❌ FAILED RECOVER
+    # 🔧 Try auto reinstall
+    send(f"⚙️ Restart failed… trying auto reinstall…")
+    auto = try_reinstall()
+
+    time.sleep(10)
+
+    if is_active():
+        send(
+            f"✅ *{NODE_NAME}* RECOVERED AFTER REINSTALL @ {t}\n"
+            f"{sys_brief()}"
+        )
+        save_flag("up")
+        return
+
+    # ❌ FAILED
     raw_logs = shell(f"journalctl -u {SERVICE} -n {LOG_LINES} --no-pager")
     logs = clean(raw_logs)
 
@@ -133,10 +182,12 @@ def main():
         logs = logs[-3500:]
 
     send(
-        f"❌ *{NODE_NAME}* FAILED RECOVER\n"
-        f"🚨 Manual action needed.\n\n"
+        f"❌ *{NODE_NAME}* FAILED RECOVER @ {t}\n"
+        f"Manual action required.\n\n"
         f"```\n{logs}\n```"
     )
+
+    save_flag("down")
 
 
 if __name__ == "__main__":
