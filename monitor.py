@@ -14,24 +14,25 @@ CHAT_ID = os.getenv("CHAT_ID", "")
 NODE_NAME = os.getenv("NODE_NAME", "deklan-node")
 LOG_LINES = int(os.getenv("LOG_LINES", "80"))
 
-SERVICE = os.getenv("SERVICE_NAME", "gensyn")   # Bisa pakai .env
+# RL-Swarm service name
+SERVICE = os.getenv("SERVICE_NAME", "gensyn")
 
 
 # =========================
 # UTILS
 # =========================
 def shell(cmd: str) -> str:
+    """Run shell command and capture output safely."""
     try:
-        out = subprocess.check_output(
+        return subprocess.check_output(
             cmd, shell=True, stderr=subprocess.STDOUT, text=True
-        )
-        return out.strip()
+        ).strip()
     except subprocess.CalledProcessError as e:
         return e.output.strip()
 
 
 def send(msg: str):
-    """Send message to Telegram"""
+    """Send message to Telegram."""
     if not (BOT_TOKEN and CHAT_ID):
         return
 
@@ -42,13 +43,12 @@ def send(msg: str):
         "parse_mode": "Markdown",
         "disable_web_page_preview": True,
     }
-
     data = urllib.parse.urlencode(payload).encode()
 
     try:
         urllib.request.urlopen(url, data=data, timeout=10)
-    except Exception as e:
-        print("Telegram send error:", e)
+    except Exception:
+        pass
 
 
 def is_active() -> bool:
@@ -62,7 +62,7 @@ def sys_brief() -> str:
         disk = psutil.disk_usage("/").percent
         return f"CPU {cpu:.0f}% • RAM {ram:.0f}% • Disk {disk:.0f}%"
     except Exception:
-        return "(sys info unavailable)"
+        return "(system info unavailable)"
 
 
 def try_restart() -> bool:
@@ -84,25 +84,27 @@ def last_round() -> str:
 def main():
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
+    # ✅ Node running
     if is_active():
-        msg = f"✅ *{NODE_NAME}* OK @ {now}\n{sys_brief()}\n{last_round()}"
-        send(msg)
+        send(f"✅ *{NODE_NAME}* OK @ {now}\n{sys_brief()}\n{last_round()}")
         return
 
-    # If down
+    # ⚠️ Node DOWN
     send(f"🚨 *{NODE_NAME}* DOWN @ {now}\nAttempting auto-restart…")
 
+    # Try restart
     if try_restart():
         send(f"🟢 *{NODE_NAME}* RECOVERED\n{sys_brief()}")
         return
 
-    # If restart failed
+    # ❌ Failed to recover — send partial logs
     logs = shell(f"journalctl -u {SERVICE} -n {LOG_LINES} --no-pager")
-    logs = logs[-3500:] if len(logs) > 3500 else logs
+    if len(logs) > 3500:
+        logs = logs[-3500:]
 
     send(
         f"❌ *{NODE_NAME}* FAILED TO RECOVER\n"
-        f"Check last logs:\n```\n{logs}\n```"
+        f"Check last logs:\n```{logs}```"
     )
 
 
