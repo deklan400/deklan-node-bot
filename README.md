@@ -1,3 +1,5 @@
+<START>
+
 <!-- BANNER -->
 <p align="center">
   <img src="https://i.ibb.co/3zxGBM4/GENSYN-BANNER.png" width="90%" />
@@ -21,39 +23,40 @@
 
 ## 🧠 Overview
 
-**Deklan Node Bot** = Telegram Bot untuk mengontrol dan memonitor  
-**Gensyn RL-Swarm Node TANPA SSH!**
+**Deklan Node Bot** adalah Telegram Bot untuk mengontrol & monitoring  
+**Gensyn RL-Swarm Node tanpa SSH!**
 
 ✅ Start / Stop / Restart  
 ✅ CPU / RAM / Disk / Uptime  
 ✅ Logs → Telegram  
 ✅ Latest Round  
-✅ Auto-Monitor + Alert  
-✅ Auto-Restart + Auto-Reinstall  
+✅ Auto-Monitor + Auto-Restart  
+✅ Auto-Reinstall  
 ✅ One-Click Installer  
-✅ Danger Zone (secure)  
-✅ Multiple Allowed Users  
+✅ Danger Zone (Password)  
+✅ Multi admin  
 ✅ AUTO_INSTALLER → update installer tanpa update bot  
-✅ Anti-Spam Alert (flag cache)  
+✅ Anti-Spam Alert (status cache)  
 
-> Semua bisa jalan dari HP 📱
+> Semua control bisa dari HP 📱
 
 ---
 
 ## ⚡ Features
 
-- Telegram control
+- Telegram menu
+- Systemd integration
 - Log viewer (journalctl)
-- CPU/RAM/Disk/Uptime
-- Round tracking
-- Auto-monitor (systemd)
+- CPU / RAM / Disk Monitoring
+- Round detection
+- Auto-monitor
 - Auto-restart
 - Auto-reinstall
-- UP/DOWN notifications
-- Anti-Spam notification
-- Remote installer scripts
-- Danger Zone w/ password
-- systemd integration
+- UP/DOWN notification
+- Anti-Spam (no spam repeat UP/DOWN)
+- Remote installer script
+- Multiple admin
+- Danger Zone (secure)
 
 ---
 
@@ -94,7 +97,7 @@ Opsional:
 ALLOWED_USER_IDS=12345,98765
 SERVICE_NAME=gensyn
 NODE_NAME=Gensyn-VPS
-LOG_LINES=50
+LOG_LINES=80
 MONITOR_EVERY_MINUTES=180
 ENABLE_DANGER_ZONE=1
 DANGER_PASS=12345
@@ -109,12 +112,12 @@ AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoins
 |------|-------|--------|
 | BOT_TOKEN | ✅ | Token bot Telegram |
 | CHAT_ID | ✅ | Admin |
-| ALLOWED_USER_IDS | ❌ | ID tambahan |
+| ALLOWED_USER_IDS | ❌ | Extra admins |
 | SERVICE_NAME | ❌ | Target service |
 | NODE_NAME | ❌ | Nama VPS |
-| LOG_LINES | ❌ | Jumlah log |
+| LOG_LINES | ❌ | Baris logs |
 | MONITOR_EVERY_MINUTES | ❌ | Interval monitor |
-| ENABLE_DANGER_ZONE | ❌ | Tombol Danger |
+| ENABLE_DANGER_ZONE | ❌ | Aktifkan menu danger |
 | DANGER_PASS | ❌ | Password Danger |
 | AUTO_INSTALLER_GITHUB | ✅ | Source auto installer |
 
@@ -125,11 +128,11 @@ AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoins
 | Command | Fungsi |
 |--------|--------|
 | /start | Menu |
-| /status | CPU/RAM/Disk/Uptime |
+| /status | Show resource |
 | /logs | Show logs |
 | /restart | Restart node |
 | /round | Show last round |
-| /help | List commands |
+| /help | Help |
 
 ---
 
@@ -137,11 +140,11 @@ AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoins
 
 | Button | Fungsi |
 |--------|--------|
-| 📊 Status | Info resource |
+| 📊 Status | Info VPS |
 | 🟢 Start | Start node |
 | 🔴 Stop | Stop node |
 | 🔁 Restart | Restart |
-| 📜 Logs | Tampilkan logs |
+| 📜 Logs | Lihat logs |
 | ℹ️ Round | Last round |
 | 🧩 Installer | Menu installer |
 | ⚠ Danger Zone | Tools berbahaya |
@@ -150,12 +153,12 @@ AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoins
 
 ## 🔧 Installer Menu
 
-Remote script loaded via:
+Remote script via:
 ```
 AUTO_INSTALLER_GITHUB
 ```
 
-Tombol:
+Fitur:
 - Install
 - Reinstall
 - Update
@@ -170,13 +173,11 @@ Flow:
 
 ## ⚙️ Auto Installer (AUTO_REPO)
 
-Semua installer berasal dari:
+All installer diambil dari:
 
 ```
 https://github.com/deklan400/deklan-autoinstall
 ```
-
-✅ Bisa update build → tanpa update bot  
 
 Supports:
 - install.sh
@@ -188,11 +189,11 @@ Supports:
 
 ## 🛰 Auto Monitor
 
-Timer systemd:
-- Cek node
+Systemd timer akan:
+- Cek status node
 - Auto-restart
-- Jika gagal → auto-reinstall
-- Jika masih gagal → kirim logs
+- Kalau gagal → auto-reinstall
+- Kalau gagal → kirim logs
 
 ```
 systemctl status monitor.timer
@@ -219,22 +220,9 @@ D -->|Fail| E(Notify + Logs)
 
 ---
 
-## 🧠 Anti-Spam
-
-Cache status disimpan di:
-
-```
-/tmp/.node_status.json
-```
-
-➜ notif hanya keluar kalau status berubah  
-(UP → DOWN / DOWN → UP)
-
----
-
 ## 🔥 Danger Zone
 
-> Wajib ENABLE + isi DANGER_PASS
+> ENABLE_DANGER_ZONE=1 + DANGER_PASS wajib
 
 | Fungsi |
 |--------|
@@ -246,7 +234,7 @@ Cache status disimpan di:
 
 ---
 
-## 🔥 Systemd
+## 🔥 Systemd Reference
 
 ### Bot
 ```
@@ -275,14 +263,14 @@ systemctl start monitor.service
 ├── monitor.timer
 ├── .env
 ├── .env.example
-└── /tmp/.node_status.json   ← auto created
+└── /tmp/.node_status.json   ← auto generated
 ```
 
 ---
 
 ## ✅ Sample Alerts
 
-✅ Node OK
+✅ UP
 ```
 ✅ Gensyn-01 is UP
 CPU 32% • RAM 71% • Disk 62%
@@ -327,7 +315,7 @@ systemctl daemon-reload
 
 ## 🛣 Roadmap
 
-- Multi-node
+- Multi-node support
 - Web dashboard
 - Auto update bot
 - Resource alert
@@ -336,4 +324,6 @@ systemctl daemon-reload
 ---
 
 ## ❤️ Credits
-Built with ❤️ by **Deklan + GPT-5**
+Built with ❤️ by **Deklan × GPT-5**
+
+<END>
