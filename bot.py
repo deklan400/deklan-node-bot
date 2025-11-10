@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import time
 import subprocess
 import psutil
 from datetime import timedelta
@@ -108,18 +109,21 @@ def _stats():
         cpu = psutil.cpu_percent(interval=0.6)
         vm = psutil.virtual_memory()
         du = psutil.disk_usage("/")
-        uptime = timedelta(seconds=int(os.sysconf("SC_CLK_TCK")))
+        uptime_sec = time.time() - psutil.boot_time()
+        up = str(timedelta(seconds=int(uptime_sec)))
+
         return (
             f"CPU   : {cpu:.1f}%\n"
             f"RAM   : {vm.percent:.1f}% ({vm.used//(1024**3)}G/{vm.total//(1024**3)}G)\n"
-            f"Disk  : {du.percent:.1f}% ({du.used//(1024**3)}G/{du.total//(1024**3)}G)"
+            f"Disk  : {du.percent:.1f}% ({du.used//(1024**3)}G/{du.total//(1024**3)}G)\n"
+            f"Uptime: {up}"
         )
     except:
         return "(system stats unavailable)"
 
 
 # ======================================================
-# RUN REMOTE
+# RUN REMOTE SCRIPT
 # ======================================================
 def _run_remote(fname: str) -> str:
     """Download + exec script from autoinstall repo."""
@@ -141,7 +145,7 @@ def _run_remote(fname: str) -> str:
 
 
 # ======================================================
-# MENUS (unchanged)
+# MENUS
 # ======================================================
 def _installer_menu():
     return InlineKeyboardMarkup([
@@ -222,7 +226,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = q.data
 
-    # ================= Installer =================
+    # Installer
     if action == "installer":
         return await q.edit_message_text(
             "🧩 *Installer Menu*",
@@ -238,7 +242,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ================= Danger Zone =================
+    # Danger zone
     if action == "dz":
         return await q.edit_message_text(
             "⚠️ *Danger Zone — Password Required*",
@@ -259,7 +263,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["awaiting_password"] = action
         return
 
-    # ================= Basic OPS =================
+    # Basic Ops
     if action == "status":
         badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
         return await q.edit_message_text(
@@ -311,12 +315,12 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ======================================================
-# TEXT HANDLER (CONFIRM INSTALL)
+# TEXT HANDLER
 # ======================================================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
-    # ===== INSTALLER CONFIRM =====
+    # ===== INSTALL CONFIRM =====
     if "pending_inst" in context.user_data:
         mode = context.user_data.pop("pending_inst")
 
@@ -325,7 +329,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(f"⚙ Running {mode.upper()}…")
 
-        # Correct map to repo scripts
         script_map = {
             "install":   "install.sh",
             "reinstall": "reinstall.sh",
@@ -355,8 +358,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("✅ Verified! Running...")
 
+    # Secure minimal version
     if action == "dz_rm_node":
-        res = _shell("systemctl stop gensyn; systemctl disable gensyn; rm -f /etc/systemd/system/gensyn.service; systemctl daemon-reload; rm -rf /home/gensyn/rl_swarm")
+        _shell(f"systemctl stop {SERVICE}; systemctl disable {SERVICE}; rm -f /etc/systemd/system/{SERVICE}.service; systemctl daemon-reload; rm -rf /home/gensyn/rl_swarm")
+        res = "Node removed"
     elif action == "dz_rm_docker":
         res = _shell("docker ps -aq | xargs -r docker rm -f; docker system prune -af")
     elif action == "dz_rm_swap":
