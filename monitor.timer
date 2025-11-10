@@ -7,11 +7,13 @@ Wants=network-online.target
 # Start 5 minutes after boot
 OnBootSec=5m
 
-# Default interval (fallback)
-# Akan di-override oleh MONITOR_EVERY_MINUTES dalam .env
+# Default interval — will be updated by install.sh if env exists
 OnUnitActiveSec=3h
 
-# Remember schedule across reboot
+# Spread monitor runs to reduce API burst
+RandomizedDelaySec=45
+
+# Remember schedule even after reboot
 Persistent=true
 
 Unit=monitor.service
