@@ -18,9 +18,9 @@ from telegram.ext import (
     filters,
 )
 
-# =========================
+# ======================================================
 # LOAD ENV
-# =========================
+# ======================================================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 CHAT_ID = str(os.getenv("CHAT_ID", ""))
 NODE_NAME = os.getenv("NODE_NAME", "deklan-node")
@@ -35,25 +35,25 @@ ALLOWED_USER_IDS = [
 ENABLE_DANGER = os.getenv("ENABLE_DANGER_ZONE", "0") == "1"
 DANGER_PASS = os.getenv("DANGER_PASS", "")
 
-# Installer Repo
+# Installer base repo
 AUTO_REPO = os.getenv(
     "AUTO_INSTALLER_GITHUB",
     "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
 )
 
 
-# =========================
+# ======================================================
 # VALIDATION
-# =========================
+# ======================================================
 if not BOT_TOKEN or not CHAT_ID:
     raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — edit .env & restart bot")
 
 
-# =========================
+# ======================================================
 # HELPERS
-# =========================
+# ======================================================
 def _shell(cmd: str) -> str:
-    """Run safe shell command"""
+    """Run safe shell command & capture output."""
     try:
         return subprocess.check_output(
             cmd, shell=True, stderr=subprocess.STDOUT, text=True
@@ -63,13 +63,27 @@ def _shell(cmd: str) -> str:
 
 
 def _authorized(update: Update) -> bool:
-    """Check security: CHAT + ALLOWED_USER_IDS"""
+    """Secure: require chat + allowed_user."""
     uid = str(update.effective_user.id)
-    return (update.effective_chat.id == int(CHAT_ID)) and (
-        not ALLOWED_USER_IDS or uid in ALLOWED_USER_IDS or uid == CHAT_ID
-    )
+
+    # Must match CHAT
+    if str(update.effective_chat.id) != CHAT_ID:
+        return False
+
+    # No allowlist → admin only
+    if not ALLOWED_USER_IDS:
+        return uid == CHAT_ID
+
+    # If allowlist → match
+    if uid == CHAT_ID or uid in ALLOWED_USER_IDS:
+        return True
+
+    return False
 
 
+# ======================================================
+# SYSTEMD OPS
+# ======================================================
 def _service_active() -> bool:
     return _shell(f"systemctl is-active {SERVICE}") == "active"
 
@@ -98,7 +112,7 @@ def _round():
 
 
 def _stats() -> str:
-    """Hardware metrics"""
+    """CPU / RAM / Disk / Uptime summary."""
     try:
         cpu = psutil.cpu_percent(interval=0.6)
         vm = psutil.virtual_memory()
@@ -115,11 +129,11 @@ def _stats() -> str:
         return "(system stats unavailable)"
 
 
-# =========================
-# RUN REMOTE INSTALLER SCRIPTS
-# =========================
+# ======================================================
+# REMOTE INSTALLER EXECUTION
+# ======================================================
 def _run_remote(name: str) -> str:
-    """Download + run remote script"""
+    """Download + execute remote script from autoinstall repo."""
     url = f"{AUTO_REPO}{name}"
     tmp = f"/tmp/{name}"
 
@@ -137,9 +151,9 @@ def _run_remote(name: str) -> str:
         return e.output
 
 
-# =========================
-# CLEAN / DANGER ZONE
-# =========================
+# ======================================================
+# DANGER ZONE — SYSTEM CLEANING
+# ======================================================
 def _rm_node():
     cmds = [
         "systemctl stop gensyn || true",
@@ -174,9 +188,9 @@ def _clean_all():
     return "\n".join([_rm_node(), _rm_docker(), _rm_swap()])
 
 
-# =========================
-# MENU
-# =========================
+# ======================================================
+# MENUS
+# ======================================================
 def _installer_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📦 Install Node", callback_data="inst_install")],
@@ -218,9 +232,9 @@ def _danger_menu():
     ])
 
 
-# =========================
+# ======================================================
 # HANDLERS
-# =========================
+# ======================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
         return await update.message.reply_text("❌ Unauthorized.")
@@ -234,15 +248,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
         return await update.message.reply_text("❌ Unauthorized.")
-    msg = (
+    await update.message.reply_text(
         "✅ *Commands:*\n"
         "/start → menu\n"
         "/status → stats\n"
         "/logs → last logs\n"
         "/restart → restart node\n"
-        "/round → last round info\n"
+        "/round → last round info\n",
+        parse_mode="Markdown"
     )
-    await update.message.reply_text(msg, parse_mode="Markdown")
 
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -254,7 +268,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = q.data
 
-    # ===== INSTALLER =====
+    # ================= INSTALLER =================
     if action == "installer":
         return await q.edit_message_text(
             "🧩 *Installer Menu*",
@@ -262,17 +276,15 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=_installer_menu()
         )
 
-    # ========== AUTO INSTALLER ==========
     if action.startswith("inst_"):
         mode = action.split("_")[1]
         context.user_data["pending_inst"] = mode
-
         return await q.edit_message_text(
-            f"⚠ Confirm {mode.upper()}?\n\nType YES or NO.",
+            f"⚠ Confirm `{mode.upper()}`?\n\nType *YES* or NO.",
             parse_mode="Markdown"
         )
 
-    # ===== DANGER ZONE =====
+    # ================ DANGER ZONE ================
     if action == "dz":
         return await q.edit_message_text(
             "⚠️ *Danger Zone — Password Required*",
@@ -293,13 +305,13 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["awaiting_password"] = action
         return
 
-    # ===== NORMAL ACTIONS =====
+    # ================= BASIC OPS =================
     if action == "status":
         badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
         return await q.edit_message_text(
             f"📟 *{NODE_NAME}*\nStatus: *{badge}*\n\n{_stats()}",
             parse_mode="Markdown",
-            reply_markup=_main_menu(),
+            reply_markup=_main_menu()
         )
 
     if action == "start":
@@ -344,9 +356,9 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-# =========================
-# PASSWORD + INSTALL PROMPT
-# =========================
+# ======================================================
+# PASS + INSTALL CONFIRM
+# ======================================================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
@@ -355,14 +367,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mode = context.user_data.pop("pending_inst")
 
         if text.upper() != "YES":
-            return await update.message.reply_text("❌ Cancel.")
+            return await update.message.reply_text("❌ Cancelled.")
 
         await update.message.reply_text(f"⚙ Running {mode.upper()}…")
 
         script_map = {
             "install": "install.sh",
             "reinstall": "reinstall.sh",
-            "update": "install.sh",    # same script → auto update
+            "update": "install.sh",
             "uninstall": "uninstall.sh",
         }
 
@@ -402,12 +414,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         res = "Unknown action"
 
-    await update.message.reply_text(f"✅ Done\n```\n{res}\n```", parse_mode="Markdown")
+    await update.message.reply_text(
+        f"✅ Done\n```\n{res}\n```", parse_mode="Markdown"
+    )
 
 
-# =========================
+# ======================================================
 # CORE
-# =========================
+# ======================================================
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
