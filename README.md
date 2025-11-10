@@ -1,185 +1,205 @@
-# 🚀 Deklan Node Bot
-> Telegram Bot untuk **Monitoring & Control** Gensyn RL-Swarm Node
+# 🤖 Deklan Node Bot — Telegram Control & Monitoring
 
-![Banner](https://i.imgur.com/VH3beOn.png)
-
-Bot ini dibuat untuk mempermudah pengelolaan node Gensyn dari Telegram.
-Semua fungsi utama node dapat dilakukan langsung dari UI Telegram:
-start/stop/restart node, cek status CPU/RAM/Disk, lihat round, tail log, dan auto-monitoring.
+Bot Telegram untuk monitoring & mengendalikan **Gensyn RL-Swarm Node** langsung dari HP 📱  
+Tanpa repot login server! Full otomatis.  
 
 ---
 
 ## ✨ Fitur Utama
 
-✅ UI tombol via Telegram  
-✅ Notifikasi performa & status node  
-✅ Start / Stop / Restart node  
 ✅ Cek status CPU / RAM / Disk / Uptime  
-✅ Cek round terakhir  
-✅ Ambil logs secara realtime  
-✅ Auto-monitor setiap X menit (bisa diatur)  
-✅ Auto-restart jika node mati  
-✅ Access whitelist untuk keamanan  
-✅ One-command install  
-✅ Systemd service + timer  
+✅ Start / Stop / Restart Node  
+✅ Lihat Logs  
+✅ Cek Round terbaru  
+✅ Akses aman (ALLOWLIST)  
+✅ Auto-monitor tiap X menit  
+✅ systemd background service  
+✅ Menu tombol Telegram  
 
 ---
 
-## 📦 Struktur Repo
+## 🚀 1) Instalasi Cepat
 
-deklan-node-bot/
-├── bot.py
-├── monitor.py
-├── .env.example
-├── install.sh
-├── requirements.txt
-├── bot.service
-├── monitor.service
-├── monitor.timer
-└── README.md
-
----
-
-# ⚡ Instalasi Cepat
-
-> Jalankan perintah berikut di VPS:
+> Jalankan perintah ini:
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh)
+```
 
-Setelah selesai, file akan terpasang otomatis di:
-/opt/deklan-node-bot
+Bot otomatis:
+✅ Install dependensi  
+✅ Setup folder  
+✅ Install service  
+✅ Auto-start  
 
-⚙️ Konfigurasi
+---
 
-Edit file .env:
+## ⚙️ 2) Konfigurasi
+
+Buka file konfigurasi:
+
+```bash
 nano /opt/deklan-node-bot/.env
+```
 
 Contoh isi:
 
-BOT_TOKEN=123456:ABC-your-bot-token
-CHAT_ID=123456789
-NODE_NAME=deklan-node
-ALLOWED_USER_IDS=123456,888888       # optional
-MONITOR_EVERY_MINUTES=180
-LOG_LINES=50
+```
+BOT_TOKEN=123456:abcdefgxxxxxxxx
+CHAT_ID=12345678
+ALLOWED_USER_IDS=123456,987654
+NODE_NAME=Gensyn-01
+MONITOR_INTERVAL=10
+```
 
-Simpan lalu restart:
-sudo systemctl restart bot
+| Key | Fungsi |
+|-----|--------|
+| BOT_TOKEN | Token Telegram Bot |
+| CHAT_ID | ID Admin |
+| ALLOWED_USER_IDS | (opsional) daftar user |
+| NODE_NAME | Nama node |
+| MONITOR_INTERVAL | Cek otomatis (menit) |
 
-✅ Cara Kerja
+> Minimal wajib: **BOT_TOKEN + CHAT_ID**
 
-✅ bot.service
-→ Handle Telegram bot (start/stop/status/logs/round)
+---
 
-✅ monitor.timer + monitor.service
-→ Kirim status tiap X menit, auto-restart jika node mati
+## 🏃 3) Jalankan / Cek Status
 
-✅ Node utamanya wajib bernama:
-gensyn
+Cek status bot:
 
-▶️ Jalankan / Cek Layanan
-💠 Cek status bot
+```bash
 systemctl status bot
+```
 
-💠 Restart bot
+Restart bot:
+
+```bash
 systemctl restart bot
+```
 
-💠 Live logs
-journalctl -u bot -f
+Monitoring timer:
 
-🤖 Telegram Control Menu
+```bash
+systemctl start monitor.timer
+```
+
+Cek timer:
+
+```bash
+systemctl status monitor.timer
+```
+
+Jalankan monitor manual:
+
+```bash
+systemctl start monitor.service
+```
+
+---
+
+## 💬 4) Telegram Commands
 
 Ketik:
 
+```
 /start
+```
 
-Akan muncul tombol UI:
+→ Bot akan tampilkan menu tombol ✅  
 
-Tombol	Fungsi
-✅ Status	Cek CPU/RAM/Disk/Uptime
-▶️ Start	Start node
-⏹ Stop	Stop node
-🔄 Restart	Restart node
-📜 Logs	Tail logs
-🔁 Round	Info round terakhir
+### Aksi:
 
-UI sudah auto-inline + akses dibatasi ke CHAT_ID/ALLOWED_USER_IDS ✅
+| Menu | Fungsi |
+|------|--------|
+| ✅ Status | Info CPU / RAM / Disk / Up |
+| ▶ Start | Start node |
+| ⏹ Stop | Stop node |
+| 🔄 Restart | Restart node |
+| 📜 Logs | Tampilkan logs |
+| 🔢 Round | Round terbaru |
 
-🔄 Auto Monitoring
+---
 
-Timer bawaan:
+## 📁 5) Lokasi File Penting
 
-monitor.timer
+| Lokasi | Fungsi |
+|--------|--------|
+| `/opt/deklan-node-bot/` | Folder bot |
+| `bot.py` | Main bot |
+| `.env` | Config |
+| `bot.service` | systemd bot |
+| `monitor.*` | Monitoring service |
 
-Default → tiap 3 jam (180 min)
+---
 
-Fungsi:
-✅ cek node aktif
-✅ kirim ringkasan sistem
-✅ auto-restart kalau mati
-✅ kirim notifikasi Telegram
+## ⏱ 6) Auto Monitoring
 
-Manual jalankan monitor sekarang:
+✅ Tiap X menit bot cek:
+- Node berjalan atau mati
+- Round naik / macet
 
-systemctl start monitor.service
+Bila ada masalah = **notif Telegram otomatis** ✅  
 
-🔥 Useful Commands
+---
 
-Bot
-systemctl status bot
-systemctl restart bot
-journalctl -u bot -f
+## ❌ Uninstall
 
-Node
-systemctl status gensyn
-systemctl restart gensyn
-systemctl stop gensyn
-systemctl start gensyn
-journalctl -u gensyn -f
+```
+systemctl stop bot monitor.service monitor.timer
+systemctl disable bot monitor.service monitor.timer
+rm /etc/systemd/system/bot.service
+rm /etc/systemd/system/monitor.*
+rm -rf /opt/deklan-node-bot
+```
 
-Monitoring
-systemctl status monitor.timer
-systemctl status monitor.service
-journalctl -u monitor.service -f
+---
 
-🛠 Manual Install (opsional)
+## 🧩 Struktur Repo
 
-git clone https://github.com/deklan400/deklan-node-bot
-cd deklan-node-bot
-pip3 install -r requirements.txt
-cp .env.example .env
-nano .env
-python3 bot.py
+```
+deklan-node-bot
+│── bot.py
+│── install.sh
+│── requirements.txt
+│── .env.example
+└── bot.service
+```
 
-❌ Uninstall
+---
 
-sudo systemctl disable --now bot monitor.timer
-sudo rm -rf /opt/deklan-node-bot
-sudo rm /etc/systemd/system/{bot.service,monitor.service,monitor.timer}
-sudo systemctl daemon-reload
+## 📡 Contoh Output Telegram
 
-🧠 Tips
+```
+🟢 NODE RUNNING
+CPU: 35%
+RAM: 62%
+Disk: 70%
+Uptime: 12h 21m
+Round: 18735
+```
 
-✅ Simpan BOT_TOKEN & CHAT_ID baik-baik
-✅ Bisa whitelist beberapa user
-✅ Ubah MONITOR_EVERY_MINUTES sesuai kebutuhan
-✅ Bisa ubah jumlah LOG_LINES
+atau:
 
-❓ Troubleshooting
-Masalah	Solusi
-Bot tidak respon	Cek .env, restart service
-Tidak ada notifikasi	Pastikan CHAT_ID benar
-Monitor tidak jalan	systemctl start monitor.service
-Node mati	Monitor akan auto-restart
+```
+🔴 NODE STOPPED
+Last Round: 18735
+```
 
-📜 License
+---
 
-MIT — bebas digunakan
+## 🛣 Roadmap
 
-💎 Credits
+- Multi-node
+- Web UI
+- Cluster manager
+- Auto-update
+- Auto backup
 
-Developer: Deklan Labz
+---
 
-Enjoy full-power control dari Telegram!
-Gak perlu login VPS lagi ✅
+## ❤️ Credits
+
+Built with ❤️ by **Deklan**
+
+END OF README
