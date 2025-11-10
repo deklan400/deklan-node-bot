@@ -3,14 +3,14 @@ set -e
 
 echo ""
 echo "====================================="
-echo " ⚡  Installing Deklan Node Bot"
+echo " ⚡ INSTALLING DEKLAN NODE BOT"
 echo "====================================="
 echo ""
 
-# Update system
+# Update
 sudo apt update && sudo apt install -y python3 python3-pip git
 
-# Clone repo kalau belum ada
+# Clone repo if not exists
 if [ ! -d "/opt/deklan-node-bot" ]; then
     sudo git clone https://github.com/deklan400/deklan-node-bot /opt/deklan-node-bot
 else
@@ -18,20 +18,27 @@ else
 fi
 
 cd /opt/deklan-node-bot
+
+# Install deps
 sudo pip3 install -r requirements.txt
 
+# Setup env
 if [ ! -f ".env" ]; then
+    cp .env.example .env
     echo ""
-    echo "⚠️ File .env belum ada!"
-    echo "Buat file .env dan isi BOT_TOKEN:"
-    echo ""
-    echo "BOT_TOKEN=your_token" > .env
-    echo "Silakan edit .env dan isi token bot."
-    echo ""
+    echo "⚠️ Edit /opt/deklan-node-bot/.env → isi BOT_TOKEN & CHAT_ID"
 fi
 
+# Install systemd
+sudo cp bot.service /etc/systemd/system/bot.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now bot
+
 echo ""
-echo "✅ Installation complete!"
-echo "Run bot via:"
-echo "cd /opt/deklan-node-bot && python3 bot.py"
+echo "✅ BOT INSTALLED!"
 echo ""
+echo "Check status:"
+echo " systemctl status bot"
+echo ""
+echo "View logs:"
+echo " journalctl -u bot -f"
