@@ -2,26 +2,26 @@ import os
 import time
 import psutil
 import subprocess
+from datetime import datetime
 import urllib.parse
 import urllib.request
-from datetime import datetime
 
-# =========================
-# CONFIG
-# =========================
+# ======================================================
+# ENV
+# ======================================================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 CHAT_ID = os.getenv("CHAT_ID", "")
 NODE_NAME = os.getenv("NODE_NAME", "deklan-node")
 
 LOG_LINES = int(os.getenv("LOG_LINES", "80"))
-SERVICE = os.getenv("SERVICE_NAME", "gensyn")  # RL-Swarm Service
+SERVICE = os.getenv("SERVICE_NAME", "gensyn")  # default RL swarm service name
 
 
-# =========================
-# UTILS
-# =========================
+# ======================================================
+# SHELL
+# ======================================================
 def shell(cmd: str) -> str:
-    """Run shell cmd safely & return stdout."""
+    """Execute shell cmd safely."""
     try:
         return subprocess.check_output(
             cmd, shell=True, stderr=subprocess.STDOUT, text=True
@@ -30,8 +30,11 @@ def shell(cmd: str) -> str:
         return e.output.strip()
 
 
+# ======================================================
+# TELEGRAM
+# ======================================================
 def send(msg: str):
-    """Send text message to Telegram."""
+    """Send Telegram text message."""
     if not (BOT_TOKEN and CHAT_ID):
         return
 
@@ -45,80 +48,93 @@ def send(msg: str):
     }
 
     data = urllib.parse.urlencode(payload).encode()
-
     try:
         urllib.request.urlopen(url, data=data, timeout=10)
     except Exception:
         pass
 
 
-def clean_markdown(text: str) -> str:
-    """Prevent Markdown injection from logs."""
+def clean(text: str) -> str:
+    """Prevent Markdown injection."""
     bad = ["`", "*", "_", "["]
     for ch in bad:
         text = text.replace(ch, "")
     return text
 
 
+# ======================================================
+# CHECKS
+# ======================================================
 def is_active() -> bool:
-    """Check RL service running."""
+    """Check if systemd service is active."""
     return shell(f"systemctl is-active {SERVICE}") == "active"
 
 
 def sys_brief() -> str:
-    """Short CPU / RAM / Disk report."""
+    """CPU / RAM / Disk mini status."""
     try:
         cpu = psutil.cpu_percent(interval=0.4)
-        ram = psutil.virtual_memory().percent
-        disk = psutil.disk_usage("/").percent
-        return f"CPU {cpu:.0f}% • RAM {ram:.0f}% • Disk {disk:.0f}%"
+        vm = psutil.virtual_memory()
+        du = psutil.disk_usage("/")
+        return f"CPU {cpu:.1f}% • RAM {vm.percent:.1f}% • Disk {du.percent:.1f}%"
     except:
         return "(sys info unavailable)"
 
 
 def try_restart() -> bool:
-    """Restart service & return success state."""
+    """Restart service → return success."""
     shell(f"systemctl restart {SERVICE}")
     time.sleep(6)
     return is_active()
 
 
 def last_round() -> str:
-    """Parse round logs."""
+    """Last round log line."""
     line = shell(
         rf"journalctl -u {SERVICE} --no-pager | grep -E 'Joining round:' | tail -n1"
     )
     return line if line else "(round info not found)"
 
 
-# =========================
+# ======================================================
 # MAIN
-# =========================
+# ======================================================
 def main():
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    t = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # ✅ Node running
+    # ✅ Running
     if is_active():
-        send(f"✅ *{NODE_NAME}* OK @ {now}\n{sys_brief()}\n{last_round()}")
+        send(
+            f"✅ *{NODE_NAME}* OK @ {t}\n"
+            f"{sys_brief()}\n"
+            f"{last_round()}"
+        )
         return
 
-    # ⚠️ Node DOWN
-    send(f"🚨 *{NODE_NAME}* DOWN @ {now}\nAttempting auto-restart…")
+    # 🚨 DOWN
+    send(
+        f"🚨 *{NODE_NAME}* DOWN @ {t}\n"
+        f"↪ Trying restart…"
+    )
 
-    # Try restart
+    # 🔁 try auto-restart
     if try_restart():
-        send(f"🟢 *{NODE_NAME}* RECOVERED\n{sys_brief()}")
+        send(
+            f"🟢 *{NODE_NAME}* RECOVERED*\n"
+            f"{sys_brief()}"
+        )
         return
 
-    # ❌ Failed to recover — post short logs
-    raw = shell(f"journalctl -u {SERVICE} -n {LOG_LINES} --no-pager")
-    logs = clean_markdown(raw)
-    if len(logs) > 3000:
-        logs = logs[-3000:]
+    # ❌ FAILED RECOVER
+    raw_logs = shell(f"journalctl -u {SERVICE} -n {LOG_LINES} --no-pager")
+    logs = clean(raw_logs)
+
+    if len(logs) > 3500:
+        logs = logs[-3500:]
 
     send(
-        f"❌ *{NODE_NAME}* FAILED TO RECOVER\n"
-        f"Check logs:\n"
+        f"❌ *{NODE_NAME}* FAILED RECOVER\n"
+        f"🚨 Manual action needed.\n\n"
         f"```\n{logs}\n```"
     )
 
