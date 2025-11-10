@@ -35,6 +35,12 @@ ALLOWED_USER_IDS = [
 ENABLE_DANGER = os.getenv("ENABLE_DANGER_ZONE", "0") == "1"
 DANGER_PASS = os.getenv("DANGER_PASS", "")
 
+# Installer Repo
+AUTO_REPO = os.getenv(
+    "AUTO_INSTALLER_GITHUB",
+    "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
+)
+
 
 # =========================
 # VALIDATION
@@ -110,6 +116,28 @@ def _stats() -> str:
 
 
 # =========================
+# RUN REMOTE INSTALLER SCRIPTS
+# =========================
+def _run_remote(name: str) -> str:
+    """Download + run remote script"""
+    url = f"{AUTO_REPO}{name}"
+    tmp = f"/tmp/{name}"
+
+    try:
+        subprocess.check_output(f"curl -s -o {tmp} {url}", shell=True)
+        subprocess.check_output(f"chmod +x {tmp}", shell=True)
+        out = subprocess.check_output(
+            f"bash {tmp}",
+            shell=True,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        return out
+    except subprocess.CalledProcessError as e:
+        return e.output
+
+
+# =========================
 # CLEAN / DANGER ZONE
 # =========================
 def _rm_node():
@@ -149,6 +177,16 @@ def _clean_all():
 # =========================
 # MENU
 # =========================
+def _installer_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📦 Install Node", callback_data="inst_install")],
+        [InlineKeyboardButton("🔄 Reinstall Node", callback_data="inst_reinstall")],
+        [InlineKeyboardButton("♻ Update Node", callback_data="inst_update")],
+        [InlineKeyboardButton("🧹 Uninstall Node", callback_data="inst_uninstall")],
+        [InlineKeyboardButton("⬅ Back", callback_data="back")],
+    ])
+
+
 def _main_menu():
     rows = [
         [InlineKeyboardButton("📊 Status", callback_data="status")],
@@ -159,6 +197,7 @@ def _main_menu():
         [InlineKeyboardButton("🔁 Restart", callback_data="restart")],
         [InlineKeyboardButton("📜 Logs", callback_data="logs")],
         [InlineKeyboardButton("ℹ️ Round", callback_data="round")],
+        [InlineKeyboardButton("🧩 Installer", callback_data="installer")],
         [InlineKeyboardButton("❓ Help", callback_data="help")],
     ]
 
@@ -215,6 +254,24 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = q.data
 
+    # ===== INSTALLER =====
+    if action == "installer":
+        return await q.edit_message_text(
+            "🧩 *Installer Menu*",
+            parse_mode="Markdown",
+            reply_markup=_installer_menu()
+        )
+
+    # ========== AUTO INSTALLER ==========
+    if action.startswith("inst_"):
+        mode = action.split("_")[1]
+        context.user_data["pending_inst"] = mode
+
+        return await q.edit_message_text(
+            f"⚠ Confirm {mode.upper()}?\n\nType YES or NO.",
+            parse_mode="Markdown"
+        )
+
     # ===== DANGER ZONE =====
     if action == "dz":
         return await q.edit_message_text(
@@ -224,7 +281,10 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     if action == "back":
-        return await q.edit_message_text("⚡ Main Menu", reply_markup=_main_menu())
+        return await q.edit_message_text(
+            "⚡ Main Menu",
+            reply_markup=_main_menu()
+        )
 
     if action.startswith("dz_"):
         if not DANGER_PASS:
@@ -285,14 +345,43 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================
-# PASSWORD HANDLER
+# PASSWORD + INSTALL PROMPT
 # =========================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+
+    # ===== INSTALLER CONFIRM =====
+    if "pending_inst" in context.user_data:
+        mode = context.user_data.pop("pending_inst")
+
+        if text.upper() != "YES":
+            return await update.message.reply_text("❌ Cancel.")
+
+        await update.message.reply_text(f"⚙ Running {mode.upper()}…")
+
+        script_map = {
+            "install": "install.sh",
+            "reinstall": "reinstall.sh",
+            "update": "install.sh",    # same script → auto update
+            "uninstall": "uninstall.sh",
+        }
+
+        name = script_map.get(mode, "install.sh")
+        result = _run_remote(name)
+
+        if len(result) > 3900:
+            result = result[-3900:]
+
+        return await update.message.reply_text(
+            f"✅ Done\n```\n{result}\n```",
+            parse_mode="Markdown"
+        )
+
+    # ===== DANGER ZONE =====
     if "awaiting_password" not in context.user_data:
         return
 
     action = context.user_data.pop("awaiting_password")
-    text = update.message.text.strip()
 
     if text != DANGER_PASS:
         return await update.message.reply_text("❌ Wrong password")
