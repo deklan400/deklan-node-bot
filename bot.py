@@ -36,7 +36,6 @@ ALLOWED_USER_IDS = [
 ENABLE_DANGER = os.getenv("ENABLE_DANGER_ZONE", "0") == "1"
 DANGER_PASS   = os.getenv("DANGER_PASS", "")
 
-# Base auto-install repo
 AUTO_REPO = os.getenv(
     "AUTO_INSTALLER_GITHUB",
     "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
@@ -44,7 +43,6 @@ AUTO_REPO = os.getenv(
 
 if not BOT_TOKEN or not CHAT_ID:
     raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — set .env then restart bot")
-
 
 # ======================================================
 # HELPERS
@@ -63,11 +61,9 @@ def _authorized(update: Update) -> bool:
     """Require chat + optional allowlist."""
     uid = str(update.effective_user.id)
 
-    # Must match chat
     if str(update.effective_chat.id) != CHAT_ID:
         return False
 
-    # No allowlist → admin only
     if not ALLOWED_USER_IDS:
         return uid == CHAT_ID
 
@@ -226,7 +222,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = q.data
 
-    # Installer
+    # ================= Installer =================
     if action == "installer":
         return await q.edit_message_text(
             "🧩 *Installer Menu*",
@@ -242,7 +238,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # Danger zone
+    # ================= Danger Zone =================
     if action == "dz":
         return await q.edit_message_text(
             "⚠️ *Danger Zone — Password Required*",
@@ -263,7 +259,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["awaiting_password"] = action
         return
 
-    # Basic Ops
+    # ================= Basic OPS =================
     if action == "status":
         badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
         return await q.edit_message_text(
@@ -358,7 +354,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("✅ Verified! Running...")
 
-    # Secure minimal version
     if action == "dz_rm_node":
         _shell(f"systemctl stop {SERVICE}; systemctl disable {SERVICE}; rm -f /etc/systemd/system/{SERVICE}.service; systemctl daemon-reload; rm -rf /home/gensyn/rl_swarm")
         res = "Node removed"
