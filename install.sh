@@ -7,38 +7,76 @@ echo " ⚡ INSTALLING DEKLAN NODE BOT"
 echo "====================================="
 echo ""
 
-# Update
 sudo apt update && sudo apt install -y python3 python3-pip git
 
-# Clone repo if not exists
 if [ ! -d "/opt/deklan-node-bot" ]; then
-    sudo git clone https://github.com/deklan400/deklan-node-bot /opt/deklan-node-bot
+  sudo git clone https://github.com/deklan400/deklan-node-bot /opt/deklan-node-bot
 else
-    echo "Repo already exists → /opt/deklan-node-bot"
+  echo "Repo already exists → /opt/deklan-node-bot"
 fi
 
 cd /opt/deklan-node-bot
-
-# Install deps
 sudo pip3 install -r requirements.txt
 
-# Setup env
+# env
 if [ ! -f ".env" ]; then
-    cp .env.example .env
-    echo ""
-    echo "⚠️ Edit /opt/deklan-node-bot/.env → isi BOT_TOKEN & CHAT_ID"
+  cp .env.example .env
+  echo ""
+  echo "⚠️ Edit /opt/deklan-node-bot/.env → isi BOT_TOKEN & CHAT_ID"
 fi
 
-# Install systemd
+# systemd bot
 sudo cp bot.service /etc/systemd/system/bot.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now bot
 
+# install monitor units
+sudo tee /etc/systemd/system/monitor.service >/dev/null <<'EOF'
+[Unit]
+Description=Deklan Node Monitor (oneshot)
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/deklan-node-bot/.env
+WorkingDirectory=/opt/deklan-node-bot
+ExecStart=/usr/bin/python3 /opt/deklan-node-bot/monitor.py
+EOF
+
+sudo tee /etc/systemd/system/monitor.timer >/dev/null <<'EOF'
+[Unit]
+Description=Run Deklan Node Monitor every 3 hours
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=3h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# apply custom interval if set in .env
+if grep -q '^MONITOR_EVERY_MINUTES=' .env; then
+  MIN=$(grep '^MONITOR_EVERY_MINUTES=' .env | cut -d'=' -f2)
+  if [[ "$MIN" =~ ^[0-9]+$ ]]; then
+    HOURS=$(( MIN / 60 ))
+    REM=$(( MIN % 60 ))
+    INTERVAL=""
+    if [ "$HOURS" -gt 0 ]; then INTERVAL="${HOURS}h"; fi
+    if [ "$REM" -gt 0 ]; then INTERVAL="${INTERVAL}${REM}m"; fi
+    if [ -n "$INTERVAL" ]; then
+      sudo sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${INTERVAL}/" /etc/systemd/system/monitor.timer
+      echo "⏱  Monitor interval set to ${INTERVAL}"
+    fi
+  fi
+fi
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now monitor.timer
+
 echo ""
-echo "✅ BOT INSTALLED!"
-echo ""
-echo "Check status:"
-echo " systemctl status bot"
-echo ""
-echo "View logs:"
-echo " journalctl -u bot -f"
+echo "✅ BOT & MONITOR INSTALLED!"
+echo "Check bot:      systemctl status bot"
+echo "Check monitor:  systemctl status monitor.timer"
+echo "Run monitor now: systemctl start monitor.service"
+echo "Logs bot:       journalctl -u bot -f"
