@@ -5,32 +5,82 @@ import psutil
 import subprocess
 from datetime import timedelta
 
-# load .env
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except Exception:
-    pass
+# ======================================================
+# ENV PATH
+# ======================================================
+ENV_FILE = "/root/rl_bot/.env"   # gunakan folder yang kamu mau
 
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
 
 # ======================================================
-# ENV / CONFIG
+# FIRST-TIME SETUP — CREATE .env
+# ======================================================
+def ensure_env():
+    required_keys = [
+        "BOT_TOKEN",
+        "CHAT_ID",
+        "NODE_NAME",
+        "SERVICE_NAME"
+    ]
+
+    env = {}
+
+    # load existing if exist
+    if os.path.exists(ENV_FILE):
+        with open(ENV_FILE) as f:
+            for line in f:
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    env[k.strip()] = v.strip()
+
+    # find missing
+    missing = [k for k in required_keys if k not in env]
+
+    if missing:
+        print("\n🔧 FIRST-TIME SETUP — masukkan data berikut:\n")
+        for k in missing:
+            v = ""
+            while not v:
+                v = input(f"{k}: ").strip()
+            env[k] = v
+
+        # write file
+        os.makedirs(os.path.dirname(ENV_FILE), exist_ok=True)
+        with open(ENV_FILE, "w") as f:
+            for k, v in env.items():
+                f.write(f"{k}={v}\n")
+
+        print("\n✅ Konfigurasi tersimpan → .env dibuat!\n")
+
+    # Export all keys into environment
+    with open(ENV_FILE) as f:
+        for line in f:
+            if "=" in line:
+                k, v = line.split("=", 1)
+                os.environ[k.strip()] = v.strip()
+
+
+# ======================================================
+# LOAD ENV
+# ======================================================
+def load_env():
+    if os.path.exists(ENV_FILE):
+        with open(ENV_FILE) as f:
+            for line in f:
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ[k.strip()] = v.strip()
+
+
+# Call setup if first time
+ensure_env()
+load_env()
+
+
+# ======================================================
+# CONFIG
 # ======================================================
 BOT_TOKEN   = os.getenv("BOT_TOKEN", "")
-CHAT_ID     = str(os.getenv("CHAT_ID", ""))  # numeric string
+CHAT_ID     = str(os.getenv("CHAT_ID", ""))
 NODE_NAME   = os.getenv("NODE_NAME", "deklan-node")
 
 SERVICE     = os.getenv("SERVICE_NAME", "gensyn")
@@ -52,13 +102,31 @@ AUTO_REPO = os.getenv(
 )
 
 if not BOT_TOKEN or not CHAT_ID:
-    raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — set in .env then restart bot")
+    raise SystemExit("❌ BOT_TOKEN / CHAT_ID tidak valid — cek .env!")
+
+
+# ======================================================
+# LIBS TG
+# ======================================================
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
+
 
 # ======================================================
 # HELPERS
 # ======================================================
 def _shell(cmd: str) -> str:
-    """Run shell command & capture output safely."""
     try:
         return subprocess.check_output(
             cmd, shell=True, stderr=subprocess.STDOUT, text=True
@@ -66,14 +134,20 @@ def _shell(cmd: str) -> str:
     except subprocess.CalledProcessError as e:
         return (e.output or "").strip()
 
+
 def _authorized(update: Update) -> bool:
-    """Require messages from the configured chat AND allowed users."""
     uid = str(update.effective_user.id)
+
+    # chat mismatch
     if str(update.effective_chat.id) != CHAT_ID:
         return False
+
+    # no allow list → chat owner free
     if not ALLOWED_USER_IDS:
         return uid == CHAT_ID
+
     return uid == CHAT_ID or uid in ALLOWED_USER_IDS
+
 
 # ======================================================
 # SYSTEMD OPS
@@ -81,17 +155,22 @@ def _authorized(update: Update) -> bool:
 def _service_active() -> bool:
     return _shell(f"systemctl is-active {SERVICE}") == "active"
 
+
 def _logs(n: int) -> str:
     return _shell(f"journalctl -u {SERVICE} -n {n} --no-pager")
+
 
 def _restart():
     return _shell(f"systemctl restart {SERVICE}")
 
+
 def _start():
     return _shell(f"systemctl start {SERVICE}")
 
+
 def _stop():
     return _shell(f"systemctl stop {SERVICE}")
+
 
 def _round() -> str:
     line = _shell(
@@ -99,8 +178,8 @@ def _round() -> str:
     )
     return line if line else "(round info not found)"
 
+
 def _stats() -> str:
-    """CPU / RAM / Disk / Uptime summary."""
     try:
         cpu = psutil.cpu_percent(interval=0.6)
         vm = psutil.virtual_memory()
@@ -113,14 +192,14 @@ def _stats() -> str:
             f"Disk  : {du.percent:.1f}% ({du.used//(1024**3)}G/{du.total//(1024**3)}G)\n"
             f"Uptime: {up}"
         )
-    except Exception:
+    except:
         return "(system stats unavailable)"
+
 
 # ======================================================
 # REMOTE INSTALLER EXECUTION
 # ======================================================
 def _run_remote(name: str) -> str:
-    """Download + execute remote script from autoinstall repo."""
     url = f"{AUTO_REPO}{name}"
     tmp = f"/tmp/{name}"
     try:
@@ -136,37 +215,6 @@ def _run_remote(name: str) -> str:
     except subprocess.CalledProcessError as e:
         return e.output or "error"
 
-# ======================================================
-# DANGER ZONE — SAFE VERSIONS (scope only this node)
-# ======================================================
-def _rm_node():
-    cmds = [
-        f"systemctl stop {SERVICE} || true",
-        f"systemctl disable {SERVICE} || true",
-        f"rm -f /etc/systemd/system/{SERVICE}.service",
-        "systemctl daemon-reload",
-        f"rm -rf {RL_DIR}",
-    ]
-    return "\n".join(_shell(c) for c in cmds)
-
-def _rm_docker():
-    # Only touch images/containers named swarm-cpu
-    cmds = [
-        "docker ps -a --filter name=swarm-cpu -q | xargs -r docker rm -f",
-        "docker images | grep swarm-cpu | awk '{print $3}' | xargs -r docker rmi -f",
-    ]
-    return "\n".join(_shell(c) for c in cmds)
-
-def _rm_swap():
-    cmds = [
-        "swapoff -a || true",
-        "rm -f /swapfile || true",
-        "sed -i '/swapfile/d' /etc/fstab",
-    ]
-    return "\n".join(_shell(c) for c in cmds)
-
-def _clean_all():
-    return "\n".join([_rm_node(), _rm_docker(), _rm_swap()])
 
 # ======================================================
 # MENUS
@@ -180,30 +228,22 @@ def _installer_menu():
         [InlineKeyboardButton("⬅ Back",            callback_data="back")],
     ])
 
+
 def _main_menu():
     rows = [
         [InlineKeyboardButton("📊 Status",  callback_data="status")],
-        [InlineKeyboardButton("🟢 Start",   callback_data="start"),
-         InlineKeyboardButton("🔴 Stop",    callback_data="stop")],
+        [
+            InlineKeyboardButton("🟢 Start", callback_data="start"),
+            InlineKeyboardButton("🔴 Stop",  callback_data="stop")
+        ],
         [InlineKeyboardButton("🔁 Restart", callback_data="restart")],
         [InlineKeyboardButton("📜 Logs",    callback_data="logs")],
         [InlineKeyboardButton("ℹ️ Round",   callback_data="round")],
         [InlineKeyboardButton("🧩 Installer", callback_data="installer")],
         [InlineKeyboardButton("❓ Help",    callback_data="help")],
     ]
-    if ENABLE_DANGER:
-        rows.append([InlineKeyboardButton("⚠️ Danger Zone", callback_data="dz")])
     return InlineKeyboardMarkup(rows)
 
-def _danger_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔥 Remove RL-Swarm", callback_data="dz_rm_node")],
-        [InlineKeyboardButton("🐋 Clean Docker",    callback_data="dz_rm_docker")],
-        [InlineKeyboardButton("💾 Remove Swap",     callback_data="dz_rm_swap")],
-        [InlineKeyboardButton("🧹 Full Clean",      callback_data="dz_clean_all")],
-        [InlineKeyboardButton("🔁 Reboot VPS",      callback_data="dz_reboot")],
-        [InlineKeyboardButton("⬅ Back",             callback_data="back")],
-    ])
 
 # ======================================================
 # HANDLERS
@@ -216,6 +256,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=_main_menu(),
     )
+
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
@@ -231,6 +272,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
         return await update.message.reply_text("❌ Unauthorized.")
@@ -241,10 +283,12 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=_main_menu()
     )
 
+
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
         return await update.message.reply_text("❌ Unauthorized.")
     await update.message.reply_text("🏓 pong")
+
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -271,28 +315,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ---------------- DANGER ZONE -------------
-    if action == "dz":
-        return await q.edit_message_text(
-            "⚠️ *Danger Zone — Password Required*",
-            parse_mode="Markdown",
-            reply_markup=_danger_menu()
-        )
-
-    if action == "back":
-        return await q.edit_message_text(
-            "⚡ Main Menu",
-            reply_markup=_main_menu()
-        )
-
-    if action.startswith("dz_"):
-        if not DANGER_PASS:
-            return await q.edit_message_text("❌ Danger Zone disabled (no password).")
-        await q.edit_message_text("Send password:")
-        context.user_data["awaiting_password"] = action
-        return
-
-    # ---------------- BASIC OPS ---------------
+    # ---------------- BASIC ----------------
     if action == "status":
         badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
         return await q.edit_message_text(
@@ -315,7 +338,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if action == "logs":
         logs = _logs(LOG_LINES)
-        # hard cap to avoid Telegram 4096 char limit
         logs = logs[-3500:] if len(logs) > 3500 else logs
         return await q.edit_message_text(
             f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```",
@@ -343,6 +365,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
             reply_markup=_main_menu(),
         )
+
 
 # ======================================================
 # PASS + INSTALL CONFIRM
@@ -377,42 +400,16 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ===== DANGER ZONE =====
-    if "awaiting_password" not in context.user_data:
-        return
+    # nothing else
+    return
 
-    action = context.user_data.pop("awaiting_password")
-
-    if text != DANGER_PASS:
-        return await update.message.reply_text("❌ Wrong password")
-
-    await update.message.reply_text("✅ Verified! Running...")
-
-    if action == "dz_rm_node":
-        res = _rm_node()
-    elif action == "dz_rm_docker":
-        res = _rm_docker()
-    elif action == "dz_rm_swap":
-        res = _rm_swap()
-    elif action == "dz_clean_all":
-        res = _clean_all()
-    elif action == "dz_reboot":
-        _shell("reboot")
-        res = "Rebooting…"
-    else:
-        res = "Unknown action"
-
-    if len(res) > 3500:
-        res = res[-3500:]
-
-    await update.message.reply_text(
-        f"✅ Done\n```\n{res}\n```", parse_mode="Markdown"
-    )
 
 # ======================================================
 # CORE
 # ======================================================
 def main():
+    from telegram.ext import ApplicationBuilder
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start",   start))
@@ -424,6 +421,7 @@ def main():
 
     print("✅ Bot running…")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
