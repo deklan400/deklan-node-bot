@@ -1,0 +1,8 @@
+[Unit]
+Description=Deklan Node Monitor (oneshot)
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/deklan-node-bot/.env
+WorkingDirectory=/opt/deklan-node-bot
+ExecStart=/usr/bin/python3 /opt/deklan-node-bot/monitor.py
