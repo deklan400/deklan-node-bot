@@ -9,8 +9,8 @@ User=root
 WorkingDirectory=/opt/deklan-node-bot
 EnvironmentFile=/opt/deklan-node-bot/.env
 
-# Explicit python3 path
-ExecStart=/usr/bin/python3 /opt/deklan-node-bot/bot.py
+# Use virtualenv
+ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/bot.py
 
 # Auto restart
 Restart=always
