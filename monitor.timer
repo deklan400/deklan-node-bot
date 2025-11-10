@@ -4,21 +4,22 @@ After=network-online.target
 Wants=network-online.target
 
 [Timer]
-# Delay execution after boot
-OnBootSec=90
+# Delay after boot
+OnBootSec=2m
 
-# Main interval — dynamically updated by install.sh based on .env:
-#   MONITOR_EVERY_MINUTES
-# Default fallback here:
+# Main interval
+# NOTE:
+#   - Install/reinstall.sh akan rewrite otomatis
+#   - Jika gagal load → fallback 3h
 OnUnitActiveSec=3h
 
-# Anti–cluster spikes
+# Avoid simultaneous execution if many nodes
 RandomizedDelaySec=45
 
-# Keep timer schedule across reboot
+# Preserve schedule across reboots
 Persistent=true
 
-# Target service
+# Target unit
 Unit=monitor.service
 
 [Install]
