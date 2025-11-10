@@ -7,23 +7,29 @@ Wants=network-online.target
 Type=oneshot
 User=root
 Group=root
+
+# Load ENV
 EnvironmentFile=/opt/deklan-node-bot/.env
+
+# App dir
 WorkingDirectory=/opt/deklan-node-bot
 
+# Run monitor.py
 ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/monitor.py
 
 # Logging
 StandardOutput=journal
 StandardError=journal
 
-# Ensure instant stdout flush
+# Flush stdout early
 Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONIOENCODING=UTF-8"
 
-# Avoid hang
+# Timeout
 TimeoutSec=90
 KillMode=process
 
-# no restart — because oneshot
+# oneshot → no restart
 Restart=no
 
 [Install]
