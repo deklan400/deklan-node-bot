@@ -1,59 +1,64 @@
 [Unit]
-Description=Deklan Node Bot
-After=network-online.target docker.service
+Description=Deklan Node Bot (Telegram Control)
+After=network-online.target
 Wants=network-online.target
 
-# Auto restart when network returns
-StartLimitBurst=20
+# Auto restart if fail
 StartLimitIntervalSec=60
+StartLimitBurst=15
+
 
 [Service]
 Type=simple
 User=root
+Group=root
 
-# Base directory
+# — Base folder
 WorkingDirectory=/opt/deklan-node-bot
 
-# ENV file (.env optional)
+# — ENV (.env optional)
 EnvironmentFile=-/opt/deklan-node-bot/.env
 
-# Python executable smart-select
-# → Pakai .venv jika ada
-ExecStart=/bin/bash -c \
-  'if [ -x "/opt/deklan-node-bot/.venv/bin/python" ]; then \
+# — Python smart selection (prioritize venv)
+ExecStart=/bin/bash -c '\
+  if [ -x "/opt/deklan-node-bot/.venv/bin/python" ]; then \
       exec /opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/bot.py; \
-   else \
+  else \
       exec /usr/bin/python3 /opt/deklan-node-bot/bot.py; \
-   fi'
+  fi'
 
 # Auto restart
 Restart=always
 RestartSec=3
 
-# Resource limit
-LimitNOFILE=65535
-
-# OS behaviour
-KillMode=mixed
-TimeoutStopSec=25
-
-# Logging to journal
+# — Logging
 StandardOutput=journal
 StandardError=journal
 
-# Disable rate limit
-LogRateLimitIntervalSec=0
-LogRateLimitBurst=0
+# — Limits
+LimitNOFILE=65535
+TimeoutStopSec=25
+KillMode=mixed
 
-# Python behaviour
-Environment="PYTHONUNBUFFERED=1"
-Environment="PYTHONIOENCODING=UTF-8"
-
-# Security
+# — Safety
 NoNewPrivileges=yes
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
+SystemCallFilter=@system-service
+LockPersonality=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+ProtectClock=yes
+ProtectKernelLogs=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+PrivateDevices=yes
+
+# — Python behavior
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONIOENCODING=UTF-8"
+
 
 [Install]
 WantedBy=multi-user.target
