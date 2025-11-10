@@ -6,18 +6,21 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=root
+Group=root
 EnvironmentFile=/opt/deklan-node-bot/.env
 WorkingDirectory=/opt/deklan-node-bot
 
-# gunakan virtualenv
 ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/monitor.py
 
-# agar log tampil di journalctl
+# Logging
 StandardOutput=journal
 StandardError=journal
 
-# memastikan output langsung flush
-Environment="PYTHON_UNBUFFERED=1"
+# Ensure instant stdout flush
+Environment="PYTHONUNBUFFERED=1"
+
+# Avoid stuck state
+TimeoutSec=60
 
 [Install]
 WantedBy=multi-user.target
