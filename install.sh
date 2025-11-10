@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ###################################################################
-#   DEKLAN NODE BOT INSTALLER — v2.7 (SMART)
+#   DEKLAN NODE BOT INSTALLER — v3 (PUBLIC)
 #   Telegram control + Auto-monitor for RL-Swarm
-#   Includes RL-Swarm auto-detect + validation
+#   Auto-install RL-Swarm keys & systemd
 ###################################################################
 
 # ===== COLORS =====
@@ -14,204 +14,195 @@ YELLOW="\e[33m"
 CYAN="\e[36m"
 NC="\e[0m"
 
+msg()  { echo -e "${GREEN}✅ $1${NC}"; }
+warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
+err()  { echo -e "${RED}❌ $1${NC}"; }
+
 banner() {
   echo -e "
 ${CYAN}===========================================
- ⚡ INSTALLING DEKLAN NODE BOT
+ ⚡ INSTALLING DEKLAN NODE BOT (v3)
 ===========================================${NC}
 "
 }
-
-msg()  { echo -e "${GREEN}✅ $1${NC}"; }
-warn() { echo -e "${YELLOW}⚠️  $1${NC}"; }
-err()  { echo -e "${RED}❌ $1${NC}"; }
-
 banner
 
+# ===== PATHS =====
 BOT_DIR="/opt/deklan-node-bot"
 REPO="https://github.com/deklan400/deklan-node-bot"
 
-# RL-Swarm autolocate
-RL_DIR_DEFAULT="/root/rl_swarm"
-KEY_DIR_DEFAULT="/root/deklan"
+RL_DIR="/root/rl_swarm"
+KEY_DIR="/root/deklan"
+
+SERVICE_NAME="bot"
 
 
 ###################################################################
-# 1) Install dependencies
+# 1) Python deps
 ###################################################################
-echo -e "${YELLOW}[1/7] Installing dependencies...${NC}"
-apt update -y
-apt install -y python3 python3-venv python3-pip git curl jq >/dev/null 2>&1 || {
-  err "Failed installing dependencies"
-  exit 1
-}
-msg "Dependencies OK"
+msg "[1/7] Installing dependencies…"
+apt update -y >/dev/null
+apt install -y python3 python3-venv python3-pip git curl jq >/dev/null
+msg "Deps OK ✅"
 
 
 ###################################################################
-# 2) Clone / Update Repo
+# 2) Clone Repo
 ###################################################################
-echo -e "${YELLOW}[2/7] Preparing bot repository...${NC}"
+msg "[2/7] Fetching bot repository…"
 
 if [[ ! -d "$BOT_DIR" ]]; then
   git clone "$REPO" "$BOT_DIR"
   msg "Repo cloned → $BOT_DIR"
 else
-  warn "Repository exists → $BOT_DIR"
+  warn "Repo exists → pulling update…"
   if git -C "$BOT_DIR" pull --rebase --autostash >/dev/null 2>&1; then
-    msg "Repo updated"
+    msg "Repo updated ✅"
   else
-    warn "Repo update failed — skipping"
+    warn "Repo update failed — using local copy"
   fi
 fi
 
+
+
+###################################################################
+# 3) Python venv
+###################################################################
+msg "[3/7] Preparing Python venv…"
+
 cd "$BOT_DIR"
-
-
-###################################################################
-# 3) Python Virtualenv
-###################################################################
-echo -e "${YELLOW}[3/7] Preparing Python venv...${NC}"
-
 if [[ ! -d ".venv" ]]; then
   python3 -m venv .venv
-  msg "Virtualenv created"
+  msg "Virtualenv created ✅"
 fi
 
 source .venv/bin/activate
-pip install --upgrade pip >/dev/null 2>&1
-pip install -r requirements.txt >/dev/null 2>&1
-msg "Python deps installed"
+pip install --upgrade pip >/dev/null
+pip install -r requirements.txt >/dev/null
+msg "Python installed ✅"
+
 
 
 ###################################################################
-# 4) Setup .env
+# 4) ENV
 ###################################################################
-echo -e "${YELLOW}[4/7] Preparing ENV...${NC}"
+msg "[4/7] Preparing ENV (.env)…"
 
 if [[ ! -f ".env" ]]; then
   cp .env.example .env
-  warn "⚠️ Edit .env → set BOT_TOKEN & CHAT_ID"
+  warn "⚠ Set BOT_TOKEN + CHAT_ID inside .env"
 fi
 
-# ensure base keys exist
+# ensure defaults exist:
 grep -q '^SERVICE_NAME=' .env      || echo "SERVICE_NAME=gensyn" >> .env
 grep -q '^AUTO_INSTALLER_GITHUB=' .env \
   || echo "AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/" >> .env
-grep -q '^RL_DIR=' .env      || echo "RL_DIR=$RL_DIR_DEFAULT" >> .env
-grep -q '^KEY_DIR=' .env     || echo "KEY_DIR=$KEY_DIR_DEFAULT" >> .env
+grep -q '^RL_DIR=' .env || echo "RL_DIR=${RL_DIR}" >> .env
+grep -q '^KEY_DIR=' .env || echo "KEY_DIR=${KEY_DIR}" >> .env
 
 chmod 600 .env
-msg ".env ready ✅"
+msg ".env OK ✅"
+
 
 
 ###################################################################
-# 5) RL-Swarm smart check
+# 5) RL-Swarm keys link
 ###################################################################
-echo -e "${YELLOW}[5/7] Checking RL-Swarm...${NC}"
-
-RL_DIR=$(grep '^RL_DIR=' .env | cut -d'=' -f2)
-KEY_DIR=$(grep '^KEY_DIR=' .env | cut -d'=' -f2)
+msg "[5/7] Checking RL-Swarm folder…"
 
 if [[ -d "$RL_DIR" ]]; then
-    msg "RL-Swarm directory found → $RL_DIR"
+  msg "RL-Swarm found → $RL_DIR"
 
-    # ensure keys symlink OK
-    if [[ ! -L "$RL_DIR/keys" ]]; then
-      warn "keys/ missing → fixing"
-      rm -rf "$RL_DIR/keys" >/dev/null 2>&1 || true
-      ln -s "$KEY_DIR" "$RL_DIR/keys"
-      msg "keys/ symlink linked ✅"
-    fi
+  if [[ ! -L "$RL_DIR/keys" ]]; then
+    warn "Missing keys symlink → fixing…"
+    rm -rf "$RL_DIR/keys" >/dev/null 2>&1 || true
+    ln -s "$KEY_DIR" "$RL_DIR/keys"
+    msg "keys → symlinked ✅"
+  fi
 else
-    warn "RL-Swarm folder NOT found"
-    echo ""
-    read -p "Clone RL-Swarm now? [Y/n] > " ans
-    if [[ ! "$ans" =~ ^[Nn]$ ]]; then
-      git clone https://github.com/gensyn-ai/rl-swarm "$RL_DIR"
-      msg "RL-Swarm cloned ✅"
-
-      rm -rf "$RL_DIR/keys" >/dev/null 2>&1
-      ln -s "$KEY_DIR" "$RL_DIR/keys"
-      msg "keys/ symlink created ✅"
-    else
-      warn "Skipping RL-Swarm clone"
-    fi
+  warn "RL-Swarm NOT found — skipping"
 fi
 
 
+
 ###################################################################
-# 6) Create bot.service
+# 6) Install systemd service
 ###################################################################
-echo -e "${YELLOW}[6/7] Installing bot.service...${NC}"
+msg "[6/7] Installing bot.service…"
 
 cat >/etc/systemd/system/bot.service <<EOF
 [Unit]
 Description=Deklan Node Bot
-After=network-online.target docker.service
+After=network-online.target
 Wants=network-online.target
-
 StartLimitIntervalSec=60
-StartLimitBurst=20
+StartLimitBurst=15
 
 [Service]
 Type=simple
 User=root
+Group=root
+
 WorkingDirectory=$BOT_DIR
 EnvironmentFile=-$BOT_DIR/.env
 
-ExecStart=/bin/bash -c '
-  if [ -x "$BOT_DIR/.venv/bin/python" ]; then
-    exec $BOT_DIR/.venv/bin/python $BOT_DIR/bot.py;
-  else
-    exec python3 $BOT_DIR/bot.py;
-  fi
-'
+ExecStart=/bin/bash -c '\
+  if [ -x "$BOT_DIR/.venv/bin/python" ]; then \
+      exec $BOT_DIR/.venv/bin/python $BOT_DIR/bot.py; \
+  else \
+      exec /usr/bin/python3 $BOT_DIR/bot.py; \
+  fi'
 
 Restart=always
 RestartSec=3
-KillMode=mixed
-LimitNOFILE=65535
 
 StandardOutput=journal
 StandardError=journal
-LogRateLimitIntervalSec=0
-LogRateLimitBurst=0
 
-Environment="PYTHONUNBUFFERED=1"
-Environment="PYTHONIOENCODING=UTF-8"
+LimitNOFILE=65535
+TimeoutStopSec=25
+KillMode=mixed
 
+# Security
 NoNewPrivileges=yes
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
+SystemCallFilter=@system-service
+LockPersonality=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+PrivateDevices=yes
 
-TimeoutStopSec=25
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONIOENCODING=UTF-8"
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
+
 systemctl daemon-reload
 systemctl enable --now bot
-msg "bot.service installed & running ✅"
+msg "bot.service installed ✅"
 
 
 ###################################################################
-# 7) Monitor Timer
+# 7) Monitor.timer
 ###################################################################
-echo -e "${YELLOW}[7/7] Installing monitor timer...${NC}"
+msg "[7/7] Installing monitor.timer…"
 
 cat >/etc/systemd/system/monitor.service <<EOF
 [Unit]
-Description=Deklan Node Monitor (oneshot)
+Description=Deklan Node Monitor
 
 [Service]
 Type=oneshot
 WorkingDirectory=$BOT_DIR
 EnvironmentFile=-$BOT_DIR/.env
 ExecStart=$BOT_DIR/.venv/bin/python $BOT_DIR/monitor.py
-
 StandardOutput=journal
 StandardError=journal
 Environment="PYTHONUNBUFFERED=1"
@@ -223,7 +214,7 @@ cat >/etc/systemd/system/monitor.timer <<EOF
 Description=Run Deklan Node Monitor
 
 [Timer]
-OnBootSec=2m
+OnBootSec=3m
 OnUnitActiveSec=3h
 Persistent=true
 Unit=monitor.service
@@ -237,15 +228,16 @@ systemctl enable --now monitor.timer
 msg "monitor.timer installed ✅"
 
 
+
 ###################################################################
 # DONE
 ###################################################################
 echo -e "
-${GREEN}✅ INSTALLATION COMPLETE
-------------------------------------
-Check bot:        systemctl status bot
-Monitor timer:    systemctl status monitor.timer
-Force monitor:    systemctl start monitor.service
-Live logs:        journalctl -u bot -f
-${NC}
+${GREEN}✅ BOT INSTALL COMPLETE
+-------------------------------------
+Check bot:         systemctl status bot
+Monitor timer:     systemctl status monitor.timer
+Force monitor:     systemctl start monitor.service
+Logs:              journalctl -u bot -f
+-------------------------------------${NC}
 "
