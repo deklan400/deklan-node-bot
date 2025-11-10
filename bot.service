@@ -1,43 +1,55 @@
 [Unit]
 Description=Deklan Node Bot
-After=network-online.target
+After=network-online.target docker.service
 Wants=network-online.target
+
+# Auto restart when network returns
+StartLimitBurst=20
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
 User=root
 
-# Dir utama bot
+# Base directory
 WorkingDirectory=/opt/deklan-node-bot
 
-# Load env
+# ENV file (.env optional)
 EnvironmentFile=-/opt/deklan-node-bot/.env
 
-# Virtualenv python
-ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/bot.py
+# Python executable smart-select
+# → Pakai .venv jika ada
+ExecStart=/bin/bash -c \
+  'if [ -x "/opt/deklan-node-bot/.venv/bin/python" ]; then \
+      exec /opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/bot.py; \
+   else \
+      exec /usr/bin/python3 /opt/deklan-node-bot/bot.py; \
+   fi'
 
-# Restart policy
+# Auto restart
 Restart=always
 RestartSec=3
 
-# File descriptor limit
+# Resource limit
 LimitNOFILE=65535
 
-# Kill behavior
+# OS behaviour
 KillMode=mixed
+TimeoutStopSec=25
 
-# Make logs go to journal
+# Logging to journal
 StandardOutput=journal
 StandardError=journal
 
-# Extra environment
+# Disable rate limit
+LogRateLimitIntervalSec=0
+LogRateLimitBurst=0
+
+# Python behaviour
 Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONIOENCODING=UTF-8"
 
-# Graceful shutdown time
-TimeoutStopSec=20
-
-# Security (recommended)
+# Security
 NoNewPrivileges=yes
 PrivateTmp=true
 ProtectSystem=full
