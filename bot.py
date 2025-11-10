@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 import os
-import time
-import psutil
 import subprocess
-import threading
+import psutil
 from datetime import timedelta
+
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -22,15 +21,12 @@ from telegram.ext import (
 # ======================================================
 # ENV / CONFIG
 # ======================================================
-BOT_TOKEN    = os.getenv("BOT_TOKEN", "")
-CHAT_ID      = str(os.getenv("CHAT_ID", ""))    # numeric string
-NODE_NAME    = os.getenv("NODE_NAME", "deklan-node")
+BOT_TOKEN   = os.getenv("BOT_TOKEN", "")
+CHAT_ID     = str(os.getenv("CHAT_ID", ""))
+NODE_NAME   = os.getenv("NODE_NAME", "deklan-node")
 
-SERVICE      = os.getenv("SERVICE_NAME", "gensyn")
-LOG_LINES    = int(os.getenv("LOG_LINES", "80"))
-
-RL_DIR       = os.getenv("RL_DIR", "/root/rl_swarm")
-KEY_DIR      = os.getenv("KEY_DIR", "/root/deklan")
+SERVICE     = os.getenv("SERVICE_NAME", "gensyn")
+LOG_LINES   = int(os.getenv("LOG_LINES", "80"))
 
 ALLOWED_USER_IDS = [
     i.strip() for i in os.getenv("ALLOWED_USER_IDS", "").split(",") if i.strip()
@@ -39,26 +35,21 @@ ALLOWED_USER_IDS = [
 ENABLE_DANGER = os.getenv("ENABLE_DANGER_ZONE", "0") == "1"
 DANGER_PASS   = os.getenv("DANGER_PASS", "")
 
-# Auto installer repo
+# Base auto-install repo
 AUTO_REPO = os.getenv(
     "AUTO_INSTALLER_GITHUB",
     "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
 )
 
-# Watchdog
-WATCHDOG_INTERVAL = int(os.getenv("WATCHDOG_INTERVAL", "30"))
-ENABLE_WATCHDOG   = os.getenv("ENABLE_WATCHDOG", "1") == "1"
-_last_state = True
-_first_boot = True
-
 if not BOT_TOKEN or not CHAT_ID:
-    raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — Set env then restart bot")
+    raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — set .env then restart bot")
 
 
 # ======================================================
 # HELPERS
 # ======================================================
 def _shell(cmd: str) -> str:
+    """Run safe shell command & capture output."""
     try:
         return subprocess.check_output(
             cmd, shell=True, stderr=subprocess.STDOUT, text=True
@@ -67,24 +58,18 @@ def _shell(cmd: str) -> str:
         return (e.output or "").strip()
 
 
-def _send(msg: str):
-    """Send alert telegram"""
-    try:
-        _shell(
-            f'curl -s -X POST https://api.telegram.org/bot{BOT_TOKEN}/sendMessage '
-            f'-d chat_id="{CHAT_ID}" -d text="{msg}"'
-        )
-    except:
-        pass
-
-
 def _authorized(update: Update) -> bool:
-    """Require messages from the configured chat AND allowed users."""
+    """Require chat + optional allowlist."""
     uid = str(update.effective_user.id)
+
+    # Must match chat
     if str(update.effective_chat.id) != CHAT_ID:
         return False
+
+    # No allowlist → admin only
     if not ALLOWED_USER_IDS:
         return uid == CHAT_ID
+
     return uid == CHAT_ID or uid in ALLOWED_USER_IDS
 
 
@@ -118,37 +103,37 @@ def _round():
     return line if line else "(round info not found)"
 
 
-def _stats() -> str:
-    """CPU / RAM / Disk / Uptime summary."""
+def _stats():
     try:
         cpu = psutil.cpu_percent(interval=0.6)
         vm = psutil.virtual_memory()
         du = psutil.disk_usage("/")
-        uptime_sec = time.time() - psutil.boot_time()
-        up = str(timedelta(seconds=int(uptime_sec)))
+        uptime = timedelta(seconds=int(os.sysconf("SC_CLK_TCK")))
         return (
             f"CPU   : {cpu:.1f}%\n"
             f"RAM   : {vm.percent:.1f}% ({vm.used//(1024**3)}G/{vm.total//(1024**3)}G)\n"
-            f"Disk  : {du.percent:.1f}% ({du.used//(1024**3)}G/{du.total//(1024**3)}G)\n"
-            f"Uptime: {up}"
+            f"Disk  : {du.percent:.1f}% ({du.used//(1024**3)}G/{du.total//(1024**3)}G)"
         )
     except:
         return "(system stats unavailable)"
 
 
 # ======================================================
-# REMOTE INSTALLER EXECUTION
+# RUN REMOTE
 # ======================================================
-def _run_remote(name: str) -> str:
-    """Download + execute remote script from autoinstall repo."""
-    url = f"{AUTO_REPO}{name}"
-    tmp = f"/tmp/{name}"
+def _run_remote(fname: str) -> str:
+    """Download + exec script from autoinstall repo."""
+    url = f"{AUTO_REPO}{fname}"
+    tmp = f"/tmp/{fname}"
+
     try:
         subprocess.check_output(f"curl -s -o {tmp} {url}", shell=True)
         subprocess.check_output(f"chmod +x {tmp}", shell=True)
         out = subprocess.check_output(
-            f"bash {tmp}", shell=True,
-            stderr=subprocess.STDOUT, text=True
+            f"bash {tmp}",
+            shell=True,
+            stderr=subprocess.STDOUT,
+            text=True
         )
         return out
     except subprocess.CalledProcessError as e:
@@ -156,45 +141,7 @@ def _run_remote(name: str) -> str:
 
 
 # ======================================================
-# DANGER ZONE — SAFER IMPLEMENTATION
-# ======================================================
-def _rm_node():
-    cmds = [
-        f"systemctl stop {SERVICE} || true",
-        f"systemctl disable {SERVICE} || true",
-        f"rm -f /etc/systemd/system/{SERVICE}.service",
-        "systemctl daemon-reload",
-        "docker ps -aq | xargs -r docker rm -f",
-        f"rm -rf {RL_DIR}",
-    ]
-    return "\n".join(_shell(c) for c in cmds)
-
-
-def _rm_docker():
-    cmds = [
-        "docker ps -aq | xargs -r docker rm -f",
-        "docker system prune -af",
-    ]
-    return "\n".join(_shell(c) for c in cmds)
-
-
-def _rm_swap():
-    cmds = [
-        "swapoff -a || true",
-        "rm -f /swapfile || true",
-        "sed -i '/swapfile/d' /etc/fstab",
-    ]
-    return "\n".join(_shell(c) for c in cmds)
-
-
-def _clean_all():
-    return "\n".join([
-        _rm_node(), _rm_docker(), _rm_swap()
-    ])
-
-
-# ======================================================
-# MENUS  — (FULL ORIGINAL, NO CHANGES)
+# MENUS (unchanged)
 # ======================================================
 def _installer_menu():
     return InlineKeyboardMarkup([
@@ -243,6 +190,7 @@ def _danger_menu():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
         return await update.message.reply_text("❌ Unauthorized.")
+
     await update.message.reply_text(
         f"⚡ *{NODE_NAME}* Control Panel",
         parse_mode="Markdown",
@@ -253,34 +201,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
         return await update.message.reply_text("❌ Unauthorized.")
+
     await update.message.reply_text(
         "✅ *Commands:*\n"
         "/start → menu\n"
         "/status → stats\n"
         "/logs → last logs\n"
         "/restart → restart node\n"
-        "/round → last round info\n"
-        "/ping → test\n",
+        "/round → last round info\n",
         parse_mode="Markdown"
-    )
-
-
-async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _authorized(update):
-        return await update.message.reply_text("❌ Unauthorized.")
-    await update.message.reply_text("🏓 pong")
-
-
-async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _authorized(update):
-        return await update.message.reply_text("❌ Unauthorized.")
-
-    badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
-
-    await update.message.reply_text(
-        f"📟 *{NODE_NAME}*\nStatus: *{badge}*\n\n{_stats()}",
-        parse_mode="Markdown",
-        reply_markup=_main_menu()
     )
 
 
@@ -293,7 +222,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = q.data
 
-    # ================= INSTALLER =================
+    # ================= Installer =================
     if action == "installer":
         return await q.edit_message_text(
             "🧩 *Installer Menu*",
@@ -309,7 +238,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ================ DANGER ZONE ================
+    # ================= Danger Zone =================
     if action == "dz":
         return await q.edit_message_text(
             "⚠️ *Danger Zone — Password Required*",
@@ -330,7 +259,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["awaiting_password"] = action
         return
 
-    # ================= BASIC OPS =================
+    # ================= Basic OPS =================
     if action == "status":
         badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
         return await q.edit_message_text(
@@ -375,15 +304,14 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/status → stats\n"
             "/logs → last logs\n"
             "/restart → restart node\n"
-            "/round → last round info\n"
-            "/ping → test\n",
+            "/round → last round info\n",
             parse_mode="Markdown",
             reply_markup=_main_menu(),
         )
 
 
 # ======================================================
-# PASS + INSTALL CONFIRM
+# TEXT HANDLER (CONFIRM INSTALL)
 # ======================================================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -397,6 +325,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(f"⚙ Running {mode.upper()}…")
 
+        # Correct map to repo scripts
         script_map = {
             "install":   "install.sh",
             "reinstall": "reinstall.sh",
@@ -404,18 +333,18 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "uninstall": "uninstall.sh",
         }
 
-        name = script_map.get(mode, "install.sh")
-        result = _run_remote(name)
+        fname = script_map.get(mode, "install.sh")
+        result = _run_remote(fname)
 
-        if len(result) > 3500:
-            result = result[-3500:]
+        if len(result) > 3800:
+            result = result[-3800:]
 
         return await update.message.reply_text(
             f"✅ Done\n```\n{result}\n```",
             parse_mode="Markdown"
         )
 
-    # ===== DANGER ZONE =====
+    # ===== DANGER =====
     if "awaiting_password" not in context.user_data:
         return
 
@@ -427,78 +356,33 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Verified! Running...")
 
     if action == "dz_rm_node":
-        res = _rm_node()
+        res = _shell("systemctl stop gensyn; systemctl disable gensyn; rm -f /etc/systemd/system/gensyn.service; systemctl daemon-reload; rm -rf /home/gensyn/rl_swarm")
     elif action == "dz_rm_docker":
-        res = _rm_docker()
+        res = _shell("docker ps -aq | xargs -r docker rm -f; docker system prune -af")
     elif action == "dz_rm_swap":
-        res = _rm_swap()
+        res = _shell("swapoff -a; rm -f /swapfile; sed -i '/swapfile/d' /etc/fstab")
     elif action == "dz_clean_all":
-        res = _clean_all()
+        res = _shell("systemctl stop gensyn; rm -rf /home/gensyn/rl_swarm; docker system prune -af; swapoff -a; rm -f /swapfile")
     elif action == "dz_reboot":
         _shell("reboot")
         res = "Rebooting…"
     else:
         res = "Unknown action"
 
-    if len(res) > 3500:
-        res = res[-3500:]
-
-    await update.message.reply_text(
+    return await update.message.reply_text(
         f"✅ Done\n```\n{res}\n```",
         parse_mode="Markdown"
     )
 
 
 # ======================================================
-# WATCHDOG LOOP
-# ======================================================
-def watchdog():
-    global _last_state, _first_boot
-    time.sleep(6)
-
-    while ENABLE_WATCHDOG:
-        try:
-            state = _service_active()
-
-            # first boot
-            if _first_boot:
-                _first_boot = False
-                _last_state = state
-                time.sleep(WATCHDOG_INTERVAL)
-                continue
-
-            if not state:
-                _send(f"⚠️ *{NODE_NAME}* DOWN\n🔄 Attempting restart…")
-                _restart()
-                time.sleep(5)
-
-                # check again
-                if not _service_active():
-                    _send(f"❌ *{NODE_NAME}* FAILED TO RESTART ‼️")
-                else:
-                    _send(f"✅ *{NODE_NAME}* restarted OK")
-
-            _last_state = state
-
-        except:
-            pass
-
-        time.sleep(WATCHDOG_INTERVAL)
-
-
-# ======================================================
 # CORE
 # ======================================================
 def main():
-    # start watchdog thread
-    if ENABLE_WATCHDOG:
-        threading.Thread(target=watchdog, daemon=True).start()
-
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+
     app.add_handler(CommandHandler("start",   start))
     app.add_handler(CommandHandler("help",    cmd_help))
-    app.add_handler(CommandHandler("status",  cmd_status))
-    app.add_handler(CommandHandler("ping",    cmd_ping))
     app.add_handler(CallbackQueryHandler(handle_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
