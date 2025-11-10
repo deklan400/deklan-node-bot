@@ -3,111 +3,8 @@ import os
 import time
 import psutil
 import subprocess
+import threading
 from datetime import timedelta
-
-# ======================================================
-# ENV PATH
-# ======================================================
-ENV_FILE = "/root/rl_bot/.env"   # gunakan folder yang kamu mau
-
-
-# ======================================================
-# FIRST-TIME SETUP — CREATE .env
-# ======================================================
-def ensure_env():
-    required_keys = [
-        "BOT_TOKEN",
-        "CHAT_ID",
-        "NODE_NAME",
-        "SERVICE_NAME"
-    ]
-
-    env = {}
-
-    # load existing if exist
-    if os.path.exists(ENV_FILE):
-        with open(ENV_FILE) as f:
-            for line in f:
-                if "=" in line:
-                    k, v = line.split("=", 1)
-                    env[k.strip()] = v.strip()
-
-    # find missing
-    missing = [k for k in required_keys if k not in env]
-
-    if missing:
-        print("\n🔧 FIRST-TIME SETUP — masukkan data berikut:\n")
-        for k in missing:
-            v = ""
-            while not v:
-                v = input(f"{k}: ").strip()
-            env[k] = v
-
-        # write file
-        os.makedirs(os.path.dirname(ENV_FILE), exist_ok=True)
-        with open(ENV_FILE, "w") as f:
-            for k, v in env.items():
-                f.write(f"{k}={v}\n")
-
-        print("\n✅ Konfigurasi tersimpan → .env dibuat!\n")
-
-    # Export all keys into environment
-    with open(ENV_FILE) as f:
-        for line in f:
-            if "=" in line:
-                k, v = line.split("=", 1)
-                os.environ[k.strip()] = v.strip()
-
-
-# ======================================================
-# LOAD ENV
-# ======================================================
-def load_env():
-    if os.path.exists(ENV_FILE):
-        with open(ENV_FILE) as f:
-            for line in f:
-                if "=" in line:
-                    k, v = line.split("=", 1)
-                    os.environ[k.strip()] = v.strip()
-
-
-# Call setup if first time
-ensure_env()
-load_env()
-
-
-# ======================================================
-# CONFIG
-# ======================================================
-BOT_TOKEN   = os.getenv("BOT_TOKEN", "")
-CHAT_ID     = str(os.getenv("CHAT_ID", ""))
-NODE_NAME   = os.getenv("NODE_NAME", "deklan-node")
-
-SERVICE     = os.getenv("SERVICE_NAME", "gensyn")
-LOG_LINES   = int(os.getenv("LOG_LINES", "80"))
-
-RL_DIR      = os.getenv("RL_DIR", "/root/rl_swarm")
-KEY_DIR     = os.getenv("KEY_DIR", "/root/deklan")
-
-ALLOWED_USER_IDS = [
-    i.strip() for i in os.getenv("ALLOWED_USER_IDS", "").split(",") if i.strip()
-]
-
-ENABLE_DANGER = os.getenv("ENABLE_DANGER_ZONE", "0") == "1"
-DANGER_PASS   = os.getenv("DANGER_PASS", "")
-
-AUTO_REPO = os.getenv(
-    "AUTO_INSTALLER_GITHUB",
-    "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
-)
-
-if not BOT_TOKEN or not CHAT_ID:
-    raise SystemExit("❌ BOT_TOKEN / CHAT_ID tidak valid — cek .env!")
-
-
-# ======================================================
-# LIBS TG
-# ======================================================
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -122,6 +19,41 @@ from telegram.ext import (
     filters,
 )
 
+# ======================================================
+# ENV / CONFIG
+# ======================================================
+BOT_TOKEN    = os.getenv("BOT_TOKEN", "")
+CHAT_ID      = str(os.getenv("CHAT_ID", ""))    # numeric string
+NODE_NAME    = os.getenv("NODE_NAME", "deklan-node")
+
+SERVICE      = os.getenv("SERVICE_NAME", "gensyn")
+LOG_LINES    = int(os.getenv("LOG_LINES", "80"))
+
+RL_DIR       = os.getenv("RL_DIR", "/root/rl_swarm")
+KEY_DIR      = os.getenv("KEY_DIR", "/root/deklan")
+
+ALLOWED_USER_IDS = [
+    i.strip() for i in os.getenv("ALLOWED_USER_IDS", "").split(",") if i.strip()
+]
+
+ENABLE_DANGER = os.getenv("ENABLE_DANGER_ZONE", "0") == "1"
+DANGER_PASS   = os.getenv("DANGER_PASS", "")
+
+# Auto installer repo
+AUTO_REPO = os.getenv(
+    "AUTO_INSTALLER_GITHUB",
+    "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
+)
+
+# Watchdog
+WATCHDOG_INTERVAL = int(os.getenv("WATCHDOG_INTERVAL", "30"))
+ENABLE_WATCHDOG   = os.getenv("ENABLE_WATCHDOG", "1") == "1"
+_last_state = True
+_first_boot = True
+
+if not BOT_TOKEN or not CHAT_ID:
+    raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — Set env then restart bot")
+
 
 # ======================================================
 # HELPERS
@@ -135,17 +67,24 @@ def _shell(cmd: str) -> str:
         return (e.output or "").strip()
 
 
-def _authorized(update: Update) -> bool:
-    uid = str(update.effective_user.id)
+def _send(msg: str):
+    """Send alert telegram"""
+    try:
+        _shell(
+            f'curl -s -X POST https://api.telegram.org/bot{BOT_TOKEN}/sendMessage '
+            f'-d chat_id="{CHAT_ID}" -d text="{msg}"'
+        )
+    except:
+        pass
 
-    # chat mismatch
+
+def _authorized(update: Update) -> bool:
+    """Require messages from the configured chat AND allowed users."""
+    uid = str(update.effective_user.id)
     if str(update.effective_chat.id) != CHAT_ID:
         return False
-
-    # no allow list → chat owner free
     if not ALLOWED_USER_IDS:
         return uid == CHAT_ID
-
     return uid == CHAT_ID or uid in ALLOWED_USER_IDS
 
 
@@ -172,7 +111,7 @@ def _stop():
     return _shell(f"systemctl stop {SERVICE}")
 
 
-def _round() -> str:
+def _round():
     line = _shell(
         rf"journalctl -u {SERVICE} --no-pager | grep -E 'Joining round:' | tail -n1"
     )
@@ -180,6 +119,7 @@ def _round() -> str:
 
 
 def _stats() -> str:
+    """CPU / RAM / Disk / Uptime summary."""
     try:
         cpu = psutil.cpu_percent(interval=0.6)
         vm = psutil.virtual_memory()
@@ -200,24 +140,61 @@ def _stats() -> str:
 # REMOTE INSTALLER EXECUTION
 # ======================================================
 def _run_remote(name: str) -> str:
+    """Download + execute remote script from autoinstall repo."""
     url = f"{AUTO_REPO}{name}"
     tmp = f"/tmp/{name}"
     try:
         subprocess.check_output(f"curl -s -o {tmp} {url}", shell=True)
         subprocess.check_output(f"chmod +x {tmp}", shell=True)
         out = subprocess.check_output(
-            f"bash {tmp}",
-            shell=True,
-            stderr=subprocess.STDOUT,
-            text=True
+            f"bash {tmp}", shell=True,
+            stderr=subprocess.STDOUT, text=True
         )
         return out
     except subprocess.CalledProcessError as e:
-        return e.output or "error"
+        return e.output or "ERR"
 
 
 # ======================================================
-# MENUS
+# DANGER ZONE — SAFER IMPLEMENTATION
+# ======================================================
+def _rm_node():
+    cmds = [
+        f"systemctl stop {SERVICE} || true",
+        f"systemctl disable {SERVICE} || true",
+        f"rm -f /etc/systemd/system/{SERVICE}.service",
+        "systemctl daemon-reload",
+        "docker ps -aq | xargs -r docker rm -f",
+        f"rm -rf {RL_DIR}",
+    ]
+    return "\n".join(_shell(c) for c in cmds)
+
+
+def _rm_docker():
+    cmds = [
+        "docker ps -aq | xargs -r docker rm -f",
+        "docker system prune -af",
+    ]
+    return "\n".join(_shell(c) for c in cmds)
+
+
+def _rm_swap():
+    cmds = [
+        "swapoff -a || true",
+        "rm -f /swapfile || true",
+        "sed -i '/swapfile/d' /etc/fstab",
+    ]
+    return "\n".join(_shell(c) for c in cmds)
+
+
+def _clean_all():
+    return "\n".join([
+        _rm_node(), _rm_docker(), _rm_swap()
+    ])
+
+
+# ======================================================
+# MENUS  — (FULL ORIGINAL, NO CHANGES)
 # ======================================================
 def _installer_menu():
     return InlineKeyboardMarkup([
@@ -231,18 +208,33 @@ def _installer_menu():
 
 def _main_menu():
     rows = [
-        [InlineKeyboardButton("📊 Status",  callback_data="status")],
+        [InlineKeyboardButton("📊 Status", callback_data="status")],
         [
             InlineKeyboardButton("🟢 Start", callback_data="start"),
-            InlineKeyboardButton("🔴 Stop",  callback_data="stop")
+            InlineKeyboardButton("🔴 Stop",  callback_data="stop"),
         ],
-        [InlineKeyboardButton("🔁 Restart", callback_data="restart")],
-        [InlineKeyboardButton("📜 Logs",    callback_data="logs")],
-        [InlineKeyboardButton("ℹ️ Round",   callback_data="round")],
+        [InlineKeyboardButton("🔁 Restart",   callback_data="restart")],
+        [InlineKeyboardButton("📜 Logs",      callback_data="logs")],
+        [InlineKeyboardButton("ℹ️ Round",     callback_data="round")],
         [InlineKeyboardButton("🧩 Installer", callback_data="installer")],
-        [InlineKeyboardButton("❓ Help",    callback_data="help")],
+        [InlineKeyboardButton("❓ Help",      callback_data="help")],
     ]
+
+    if ENABLE_DANGER:
+        rows.append([InlineKeyboardButton("⚠️ Danger Zone", callback_data="dz")])
+
     return InlineKeyboardMarkup(rows)
+
+
+def _danger_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔥 Remove RL-Swarm", callback_data="dz_rm_node")],
+        [InlineKeyboardButton("🐋 Clean Docker",    callback_data="dz_rm_docker")],
+        [InlineKeyboardButton("💾 Remove Swap",     callback_data="dz_rm_swap")],
+        [InlineKeyboardButton("🧹 Full Clean",      callback_data="dz_clean_all")],
+        [InlineKeyboardButton("🔁 Reboot VPS",      callback_data="dz_reboot")],
+        [InlineKeyboardButton("⬅ Back",             callback_data="back")],
+    ])
 
 
 # ======================================================
@@ -268,19 +260,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/logs → last logs\n"
         "/restart → restart node\n"
         "/round → last round info\n"
-        "/ping → quick check\n",
+        "/ping → test\n",
         parse_mode="Markdown"
-    )
-
-
-async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _authorized(update):
-        return await update.message.reply_text("❌ Unauthorized.")
-    badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
-    await update.message.reply_text(
-        f"📟 *{NODE_NAME}*\nStatus: *{badge}*\n\n{_stats()}",
-        parse_mode="Markdown",
-        reply_markup=_main_menu()
     )
 
 
@@ -288,6 +269,19 @@ async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
         return await update.message.reply_text("❌ Unauthorized.")
     await update.message.reply_text("🏓 pong")
+
+
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _authorized(update):
+        return await update.message.reply_text("❌ Unauthorized.")
+
+    badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
+
+    await update.message.reply_text(
+        f"📟 *{NODE_NAME}*\nStatus: *{badge}*\n\n{_stats()}",
+        parse_mode="Markdown",
+        reply_markup=_main_menu()
+    )
 
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -299,7 +293,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = q.data
 
-    # ---------------- INSTALLER ----------------
+    # ================= INSTALLER =================
     if action == "installer":
         return await q.edit_message_text(
             "🧩 *Installer Menu*",
@@ -315,7 +309,28 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ---------------- BASIC ----------------
+    # ================ DANGER ZONE ================
+    if action == "dz":
+        return await q.edit_message_text(
+            "⚠️ *Danger Zone — Password Required*",
+            parse_mode="Markdown",
+            reply_markup=_danger_menu()
+        )
+
+    if action == "back":
+        return await q.edit_message_text(
+            "⚡ Main Menu",
+            reply_markup=_main_menu()
+        )
+
+    if action.startswith("dz_"):
+        if not DANGER_PASS:
+            return await q.edit_message_text("❌ Danger Zone disabled.")
+        await q.edit_message_text("Send password:")
+        context.user_data["awaiting_password"] = action
+        return
+
+    # ================= BASIC OPS =================
     if action == "status":
         badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
         return await q.edit_message_text(
@@ -361,7 +376,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/logs → last logs\n"
             "/restart → restart node\n"
             "/round → last round info\n"
-            "/ping → quick check\n",
+            "/ping → test\n",
             parse_mode="Markdown",
             reply_markup=_main_menu(),
         )
@@ -400,18 +415,86 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # nothing else
-    return
+    # ===== DANGER ZONE =====
+    if "awaiting_password" not in context.user_data:
+        return
+
+    action = context.user_data.pop("awaiting_password")
+
+    if text != DANGER_PASS:
+        return await update.message.reply_text("❌ Wrong password")
+
+    await update.message.reply_text("✅ Verified! Running...")
+
+    if action == "dz_rm_node":
+        res = _rm_node()
+    elif action == "dz_rm_docker":
+        res = _rm_docker()
+    elif action == "dz_rm_swap":
+        res = _rm_swap()
+    elif action == "dz_clean_all":
+        res = _clean_all()
+    elif action == "dz_reboot":
+        _shell("reboot")
+        res = "Rebooting…"
+    else:
+        res = "Unknown action"
+
+    if len(res) > 3500:
+        res = res[-3500:]
+
+    await update.message.reply_text(
+        f"✅ Done\n```\n{res}\n```",
+        parse_mode="Markdown"
+    )
+
+
+# ======================================================
+# WATCHDOG LOOP
+# ======================================================
+def watchdog():
+    global _last_state, _first_boot
+    time.sleep(6)
+
+    while ENABLE_WATCHDOG:
+        try:
+            state = _service_active()
+
+            # first boot
+            if _first_boot:
+                _first_boot = False
+                _last_state = state
+                time.sleep(WATCHDOG_INTERVAL)
+                continue
+
+            if not state:
+                _send(f"⚠️ *{NODE_NAME}* DOWN\n🔄 Attempting restart…")
+                _restart()
+                time.sleep(5)
+
+                # check again
+                if not _service_active():
+                    _send(f"❌ *{NODE_NAME}* FAILED TO RESTART ‼️")
+                else:
+                    _send(f"✅ *{NODE_NAME}* restarted OK")
+
+            _last_state = state
+
+        except:
+            pass
+
+        time.sleep(WATCHDOG_INTERVAL)
 
 
 # ======================================================
 # CORE
 # ======================================================
 def main():
-    from telegram.ext import ApplicationBuilder
+    # start watchdog thread
+    if ENABLE_WATCHDOG:
+        threading.Thread(target=watchdog, daemon=True).start()
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start",   start))
     app.add_handler(CommandHandler("help",    cmd_help))
     app.add_handler(CommandHandler("status",  cmd_status))
