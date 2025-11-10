@@ -1,76 +1,105 @@
 #!/usr/bin/env bash
 set -e
 
+###################################################################
+#   DEKLAN NODE BOT INSTALLER — v2.0
+#   Telegram control + Auto-monitor for RL-Swarm
+###################################################################
+
+# ===== COLORS =====
 GREEN="\e[32m"
 RED="\e[31m"
 YELLOW="\e[33m"
 CYAN="\e[36m"
 NC="\e[0m"
 
-echo -e "
-${CYAN}=====================================
+banner() {
+  echo -e "
+${CYAN}===========================================
  ⚡ INSTALLING DEKLAN NODE BOT
-=====================================${NC}
+===========================================${NC}
 "
-
-# ----------------------------------------------------
-# Install dependencies
-# ----------------------------------------------------
-echo -e "${YELLOW}[1/7] Installing dependencies...${NC}"
-sudo apt update -y
-sudo apt install -y python3 python3-pip python3-venv git >/dev/null 2>&1 || {
-  echo -e "${RED}❌ Failed installing dependencies${NC}"
-  exit 1
 }
 
-# ----------------------------------------------------
-# Clone repo
-# ----------------------------------------------------
-echo -e "${YELLOW}[2/7] Cloning repo...${NC}"
+msg()  { echo -e "${GREEN}✅ $1${NC}"; }
+warn() { echo -e "${YELLOW}⚠️  $1${NC}"; }
+err()  { echo -e "${RED}❌ $1${NC}"; }
 
-if [ ! -d "/opt/deklan-node-bot" ]; then
-    sudo git clone https://github.com/deklan400/deklan-node-bot /opt/deklan-node-bot
-    echo -e "${GREEN}✅ Repo cloned${NC}"
+banner
+
+
+###################################################################
+# 1) Install Base Dependencies
+###################################################################
+echo -e "${YELLOW}[1/7] Installing dependencies...${NC}"
+apt update -y
+apt install -y python3 python3-pip python3-venv git curl >/dev/null 2>&1 || {
+  err "Failed installing dependencies"
+  exit 1
+}
+msg "Dependencies OK"
+
+
+###################################################################
+# 2) Clone / Update Repo
+###################################################################
+echo -e "${YELLOW}[2/7] Preparing bot repository...${NC}"
+
+BOT_DIR="/opt/deklan-node-bot"
+
+if [[ ! -d "$BOT_DIR" ]]; then
+  git clone https://github.com/deklan400/deklan-node-bot "$BOT_DIR"
+  msg "Repo cloned → $BOT_DIR"
 else
-    echo -e "${GREEN}✅ Repo already exists → /opt/deklan-node-bot${NC}"
+  warn "Repo exists → update?"
+  read -p "Update repo? [Y/n] > " ans
+  if [[ ! "$ans" =~ ^[Nn]$ ]]; then
+    cd "$BOT_DIR" && git pull
+    msg "Repo updated"
+  else
+    msg "Skipping update"
+  fi
 fi
 
-cd /opt/deklan-node-bot
+cd "$BOT_DIR"
 
-# ----------------------------------------------------
-# Python virtual env
-# ----------------------------------------------------
+
+###################################################################
+# 3) Python Virtualenv
+###################################################################
 echo -e "${YELLOW}[3/7] Preparing Python venv...${NC}"
 
-if [ ! -d ".venv" ]; then
-    python3 -m venv .venv
-    echo -e "${GREEN}✅ Virtualenv created${NC}"
+if [[ ! -d ".venv" ]]; then
+  python3 -m venv .venv
+  msg "Virtualenv created"
 fi
 
 source .venv/bin/activate
 pip install -r requirements.txt >/dev/null 2>&1
-echo -e "${GREEN}✅ Python deps installed${NC}"
+msg "Python deps installed"
 
-# ----------------------------------------------------
-# ENV setup
-# ----------------------------------------------------
+
+###################################################################
+# 4) Setup .env
+###################################################################
 echo -e "${YELLOW}[4/7] Setting up ENV...${NC}"
-if [ ! -f ".env" ]; then
-    cp .env.example .env
-    echo -e "${YELLOW}⚠️  Edit ENV → Set BOT_TOKEN & CHAT_ID${NC}"
-    echo "nano /opt/deklan-node-bot/.env"
+
+if [[ ! -f ".env" ]]; then
+  cp .env.example .env
+  warn "Edit .env → set BOT_TOKEN & CHAT_ID"
+  echo "nano $BOT_DIR/.env"
 fi
 
-sudo chown root:root .env
-sudo chmod 600 .env
+chmod 600 .env
+msg ".env ready"
 
 
-# ----------------------------------------------------
-# Create bot.service
-# ----------------------------------------------------
+###################################################################
+# 5) Install bot.service
+###################################################################
 echo -e "${YELLOW}[5/7] Installing bot.service...${NC}"
 
-sudo tee /etc/systemd/system/bot.service >/dev/null <<EOF
+cat >/etc/systemd/system/bot.service <<EOF
 [Unit]
 Description=Deklan Node Bot
 After=network-online.target
@@ -79,43 +108,46 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-EnvironmentFile=/opt/deklan-node-bot/.env
-WorkingDirectory=/opt/deklan-node-bot
-ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/bot.py
+EnvironmentFile=$BOT_DIR/.env
+WorkingDirectory=$BOT_DIR
+ExecStart=$BOT_DIR/.venv/bin/python $BOT_DIR/bot.py
 Restart=always
 RestartSec=5
 LimitNOFILE=65535
 KillMode=process
+StandardOutput=journal
+StandardError=journal
 Environment="PYTHONUNBUFFERED=1"
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable --now bot
-echo -e "${GREEN}✅ bot.service installed & started${NC}"
+systemctl daemon-reload
+systemctl enable --now bot
+msg "bot.service installed & running"
 
-# ----------------------------------------------------
-# monitor.service + monitor.timer
-# ----------------------------------------------------
+
+###################################################################
+# 6) Install monitor.service + monitor.timer
+###################################################################
 echo -e "${YELLOW}[6/7] Installing monitor.timer...${NC}"
 
-sudo tee /etc/systemd/system/monitor.service >/dev/null <<EOF
+cat >/etc/systemd/system/monitor.service <<EOF
 [Unit]
 Description=Deklan Node Monitor (oneshot)
 
 [Service]
 Type=oneshot
-EnvironmentFile=/opt/deklan-node-bot/.env
-WorkingDirectory=/opt/deklan-node-bot
-ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/monitor.py
+EnvironmentFile=$BOT_DIR/.env
+WorkingDirectory=$BOT_DIR
+ExecStart=$BOT_DIR/.venv/bin/python $BOT_DIR/monitor.py
 StandardOutput=journal
 StandardError=journal
 Environment="PYTHONUNBUFFERED=1"
 EOF
 
-sudo tee /etc/systemd/system/monitor.timer >/dev/null <<EOF
+cat >/etc/systemd/system/monitor.timer <<EOF
 [Unit]
 Description=Run Deklan Node Monitor every 3 hours
 After=network-online.target
@@ -131,34 +163,33 @@ Unit=monitor.service
 WantedBy=timers.target
 EOF
 
-# ----------------------------------------------------
-# Override interval if MONITOR_EVERY_MINUTES exists
-# ----------------------------------------------------
+# Auto customize interval if MONITOR_EVERY_MINUTES exists
 if grep -q '^MONITOR_EVERY_MINUTES=' .env; then
-    MIN=$(grep '^MONITOR_EVERY_MINUTES=' .env | cut -d'=' -f2)
-    if [[ "$MIN" =~ ^[0-9]+$ ]]; then
-        HOURS=$(( MIN / 60 ))
-        REM=$(( MIN % 60 ))
+  MIN=$(grep '^MONITOR_EVERY_MINUTES=' .env | cut -d'=' -f2)
+  if [[ "$MIN" =~ ^[0-9]+$ ]]; then
+    HOURS=$(( MIN / 60 ))
+    REM=$(( MIN % 60 ))
 
-        INTERVAL=""
-        [[ $HOURS -gt 0 ]] && INTERVAL="${HOURS}h"
-        [[ $REM -gt 0 ]] && INTERVAL="${INTERVAL}${REM}m"
+    INTERVAL=""
+    [[ $HOURS -gt 0 ]] && INTERVAL="${HOURS}h"
+    [[ $REM -gt 0 ]] && INTERVAL="${INTERVAL}${REM}m"
 
-        if [ -n "$INTERVAL" ]; then
-            sudo sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${INTERVAL}/" \
-              /etc/systemd/system/monitor.timer
-            echo -e "${GREEN}⏱ Custom interval = ${INTERVAL}${NC}"
-        fi
+    if [[ -n "$INTERVAL" ]]; then
+      sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=$INTERVAL/" \
+        /etc/systemd/system/monitor.timer
+      msg "Monitor interval overridden → $INTERVAL"
     fi
+  fi
 fi
 
-sudo systemctl daemon-reload
-sudo systemctl enable --now monitor.timer
+systemctl daemon-reload
+systemctl enable --now monitor.timer
+msg "monitor.timer installed & active"
 
 
-# ----------------------------------------------------
-# Done
-# ----------------------------------------------------
+###################################################################
+# 7) DONE
+###################################################################
 echo -e "
 ${GREEN}✅ INSTALLATION COMPLETE!
 ------------------------------------
