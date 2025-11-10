@@ -3,31 +3,41 @@ Description=Deklan Node Monitor (oneshot)
 After=network-online.target
 Wants=network-online.target
 
+# OPTIONAL — only start if monitor exists
+ConditionPathExists=/opt/deklan-node-bot/monitor.py
+ConditionPathExists=/opt/deklan-node-bot/.venv/bin/python
+
 [Service]
 Type=oneshot
 User=root
 Group=root
 
 # Load ENV
-EnvironmentFile=/opt/deklan-node-bot/.env
+EnvironmentFile=-/opt/deklan-node-bot/.env
 
-# App dir
+# Working dir
 WorkingDirectory=/opt/deklan-node-bot
 
-# Run monitor.py
+# Exec
 ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/monitor.py
 
 # Logging
 StandardOutput=journal
 StandardError=journal
 
-# Flush stdout early
+# Buffers
 Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONIOENCODING=UTF-8"
 
 # Timeout
 TimeoutSec=90
 KillMode=process
+
+# Security (safe)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
 
 # oneshot → no restart
 Restart=no
