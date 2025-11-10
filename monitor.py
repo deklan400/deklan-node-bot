@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 import json
 
+
 # ======================================================
 # ENV
 # ======================================================
@@ -22,6 +23,9 @@ AUTO_REPO = os.getenv(
     "AUTO_INSTALLER_GITHUB",
     "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
 )
+
+RL_DIR  = os.getenv("RL_DIR", "/root/rl_swarm")
+KEY_DIR = os.getenv("KEY_DIR", "/root/deklan")
 
 FLAG_FILE = "/tmp/.node_status.json"
 
@@ -86,6 +90,23 @@ def save_flag(status: str, reinstalled=False):
 
 
 # ======================================================
+# RL-SWARM AUTO FIX
+# ======================================================
+def fix_keys_symlink():
+    """Ensure keys dir inside RL-Swarm points to KEY_DIR."""
+    if not os.path.isdir(RL_DIR):
+        return
+
+    k = os.path.join(RL_DIR, "keys")
+    if os.path.islink(k):
+        return
+
+    # try fix
+    shell(f"rm -rf {k}")
+    shell(f"ln -s {KEY_DIR} {k}")
+
+
+# ======================================================
 # CHECKS
 # ======================================================
 def is_active() -> bool:
@@ -124,7 +145,7 @@ def try_restart() -> bool:
 
 
 # ======================================================
-# AUTO REPAIR LOGIC
+# AUTO REPAIR
 # ======================================================
 def try_reinstall():
     tmp = "/tmp/reinstall.sh"
@@ -142,6 +163,9 @@ def try_reinstall():
 def main():
     t = datetime.now().strftime("%Y-%m-%d %H:%M")
     state = load_flag()
+
+    # fix symlink before checks
+    fix_keys_symlink()
 
     # ✅ Node running
     if is_active():
@@ -186,7 +210,7 @@ def main():
         else:
             save_flag("down", True)
 
-    # ❌ FAILED
+    # ❌ FAILED — fallback, dump logs
     raw_logs = shell(f"journalctl -u {SERVICE} -n {LOG_LINES} --no-pager")
     logs = clean(raw_logs)
 
