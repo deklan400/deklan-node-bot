@@ -1,7 +1,11 @@
-<h1 align="center">🖤 Deklan Node Bot</h1>
-
+<!-- BANNER -->
 <p align="center">
-  Control & Auto-Monitor Gensyn RL-Swarm Nodes via Telegram
+  <img src="https://i.ibb.co/3zxGBM4/GENSYN-BANNER.png" width="90%" />
+</p>
+
+<h1 align="center">🖤 Deklan Node Bot</h1>
+<p align="center">
+  Telegram Control & Auto-Monitor for Gensyn RL-Swarm Nodes
 </p>
 
 <p align="center">
@@ -9,46 +13,60 @@
   <img src="https://img.shields.io/badge/Telegram-Bot-green?style=for-the-badge">
   <img src="https://img.shields.io/badge/Auto--Monitor-YES-orange?style=for-the-badge">
   <img src="https://img.shields.io/badge/Systemd-Supported-yellow?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Linux-Ubuntu%2022.04-purple?style=for-the-badge">
 </p>
 
 ---
 
 ## 🧠 Overview
 
-**Deklan Node Bot** = cara termudah untuk mengontrol & memonitor node **Gensyn RL-Swarm**  
-→ Cukup lewat Telegram ✅  
+**Deklan Node Bot** memudahkan kontrol & monitoring node **Gensyn RL-Swarm**  
+↪ lewat Telegram ✅  
+↪ tanpa SSH ✅  
+↪ otomatis pantau ✅  
 
-Tanpa SSH, tanpa ribet.  
-Start / Stop / Restart / Logs, semua di tombol Telegram.
+Kamu bisa:
+✅ Start / Stop / Restart node  
+✅ Baca logs langsung di Telegram  
+✅ Cek CPU, RAM, Disk & Round  
+✅ Notifikasi otomatis kalau node mati  
+✅ Auto-restart bila down  
+
+> Semua cukup dari HP 📱
 
 ---
 
 ## ⚡ Features
 
 ✅ CPU / RAM / Disk / Uptime checker  
-✅ Start/Stop/Restart node  
-✅ Cek round terakhir  
-✅ Display logs langsung di Telegram  
-✅ Auto monitoring per X menit  
-✅ Auto-restart kalau node mati  
-✅ Notif Telegram otomatis  
-✅ systemd daemon → auto start  
-✅ Allowlist user → aman  
+✅ Start / Stop / Restart node (systemd)  
+✅ Cek round terbaru  
+✅ Ambil log terakhir  
+✅ Auto monitoring tiap X menit  
+✅ Auto restart + auto notify  
+✅ Telegram UI tombol  
+✅ User Allowlist (AMAN)  
+✅ systemd background  
+✅ Zero-maintenance  
+
+> FULL CONTROL — langsung dari Telegram 🚀  
 
 ---
 
-## 🚀 Install
+## 🚀 Quick Install
 
-> Jalankan perintah ini:
+> Jalankan ini di VPS 🔽
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh)
 ```
 
-Bot:
-✔ install dependensi  
-✔ copy service  
-✔ auto start  
+Bot otomatis:
+✅ Install dependency  
+✅ Setup folder  
+✅ Install + enable services  
+
+🎉 DONE
 
 ---
 
@@ -65,7 +83,7 @@ Contoh:
 ```
 BOT_TOKEN=YOUR_BOT_TOKEN
 CHAT_ID=123456789
-ALLOWED_USER_IDS=1234,5678
+ALLOWED_USER_IDS=123456789
 NODE_NAME=Gensyn-VPS-01
 MONITOR_EVERY_MINUTES=180
 LOG_LINES=50
@@ -80,53 +98,48 @@ LOG_LINES=50
 | MONITOR_EVERY_MINUTES | ❌ | Interval |
 | LOG_LINES | ❌ | Baris log |
 
-> Minimal wajib → BOT_TOKEN & CHAT_ID
+⚠ Minimal wajib → BOT_TOKEN + CHAT_ID  
 
 ---
 
-## 🎛 Systemd Usage
+## 🎛 Systemd Service
 
-Cek status bot:
-
+🔎 Check bot
 ```bash
 systemctl status bot
 ```
 
-Restart bot:
-
+♻ Restart bot
 ```bash
 systemctl restart bot
 ```
 
-Logs:
-
+📡 Logs
 ```bash
 journalctl -u bot -f
 ```
 
-Monitor now:
-
+▶ Run monitor now
 ```bash
 systemctl start monitor.service
 ```
 
-Cek timer:
-
+⏱ Timer check
 ```bash
 systemctl status monitor.timer
 ```
 
 ---
 
-## 💬 Telegram UI
+## 💬 Telegram Menu
 
-👉 Ketik:
+Ketik:
 
 ```
 /start
 ```
 
-📌 Akan muncul tombol:
+Tombol muncul:
 
 | Tombol | Fungsi |
 |--------|--------|
@@ -135,7 +148,7 @@ systemctl status monitor.timer
 | 🔴 Stop | Stop node |
 | 🔁 Restart | Restart node |
 | 📜 Logs | Logs |
-| 🔢 Round | Round |
+| 🔢 Round | Round terbaru |
 
 ---
 
@@ -148,19 +161,19 @@ CPU 31% • RAM 67% • Disk 70%
 Round: 18735
 ```
 
-⚠ Node Mati
+⛔ Node mati
 ```
 🚨 Gensyn-01 DOWN
-Auto-restart…
+Attempting auto-restart…
 ```
 
-Recovered
+🟢 Pulih
 ```
 🟢 Node recovered
 CPU 30% • RAM 63% • Disk 71%
 ```
 
-Failed
+❌ Gagal
 ```
 ❌ FAILED TO RECOVER
 (last logs)
@@ -168,7 +181,7 @@ Failed
 
 ---
 
-## 📁 Struktur
+## 📁 Repo Structure
 
 ```
 /opt/deklan-node-bot
@@ -198,7 +211,7 @@ systemctl daemon-reload
 
 ## 🌙 Screenshots
 
-> Tambahkan folder `images/` di repo
+> Tambahkan folder `images/`
 
 ```
 /images/menu.png
@@ -210,15 +223,14 @@ systemctl daemon-reload
 
 ## 🛣 Roadmap
 
-- Multi-node sync  
-- Web UI dashboard  
+- Multi-node support  
+- Web dashboard  
 - Auto update  
-- More Alert types  
+- Multi alert rules  
 - Cluster support  
 
 ---
 
-## ❤️ Credits
+## ❤️ Credits  
 
 Built with ❤️ by **Deklan**
-
