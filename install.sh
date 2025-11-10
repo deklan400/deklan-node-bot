@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 ###################################################################
-#   DEKLAN NODE BOT INSTALLER — v2.3
+#   DEKLAN NODE BOT INSTALLER — v2.4
 #   Telegram control + Auto-monitor for RL-Swarm
 ###################################################################
 
@@ -28,6 +28,8 @@ err()  { echo -e "${RED}❌ $1${NC}"; }
 banner
 
 BOT_DIR="/opt/deklan-node-bot"
+REPO="https://github.com/deklan400/deklan-node-bot"
+
 
 ###################################################################
 # 1) Install dependencies
@@ -40,26 +42,26 @@ apt install -y python3 python3-pip python3-venv git curl >/dev/null 2>&1 || {
 }
 msg "Dependencies OK"
 
+
 ###################################################################
 # 2) Clone / Update Repo
 ###################################################################
 echo -e "${YELLOW}[2/7] Preparing bot repository...${NC}"
 
 if [[ ! -d "$BOT_DIR" ]]; then
-  git clone https://github.com/deklan400/deklan-node-bot "$BOT_DIR"
+  git clone "$REPO" "$BOT_DIR"
   msg "Repo cloned → $BOT_DIR"
 else
-  warn "Repository exists: $BOT_DIR"
-  read -p "Update repo? [Y/n] > " ans
-  if [[ ! "$ans" =~ ^[Nn]$ ]]; then
-    cd "$BOT_DIR" && git pull
+  warn "Repository exists → $BOT_DIR"
+  if git -C "$BOT_DIR" pull --rebase --autostash >/dev/null 2>&1; then
     msg "Repo updated"
   else
-    msg "Skipping update"
+    warn "Repo update failed — skipping"
   fi
 fi
 
 cd "$BOT_DIR"
+
 
 ###################################################################
 # 3) Python Virtualenv
@@ -72,8 +74,10 @@ if [[ ! -d ".venv" ]]; then
 fi
 
 source .venv/bin/activate
+pip install --upgrade pip >/dev/null 2>&1
 pip install -r requirements.txt >/dev/null 2>&1
 msg "Python deps installed"
+
 
 ###################################################################
 # 4) Setup .env
@@ -86,12 +90,15 @@ if [[ ! -f ".env" ]]; then
   echo "nano $BOT_DIR/.env"
 fi
 
-# Inject AUTO_REPO & SERVICE_NAME + secure perms
-grep -q '^AUTO_INSTALLER_GITHUB=' .env || echo "AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/" >> .env
+# Force-inject AUTO_REPO & SERVICE
+grep -q '^AUTO_INSTALLER_GITHUB=' .env || \
+echo "AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/" >> .env
+
 grep -q '^SERVICE_NAME=' .env || echo "SERVICE_NAME=gensyn" >> .env
 
 chmod 600 .env
 msg ".env ready ✅"
+
 
 ###################################################################
 # 5) Create bot.service
@@ -107,19 +114,28 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-EnvironmentFile=$BOT_DIR/.env
+EnvironmentFile=-$BOT_DIR/.env
 WorkingDirectory=$BOT_DIR
 ExecStart=$BOT_DIR/.venv/bin/python $BOT_DIR/bot.py
 
 Restart=always
-RestartSec=5
-
+RestartSec=3
 KillMode=mixed
 LimitNOFILE=65535
 
+# Logging
 StandardOutput=journal
 StandardError=journal
 Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONIOENCODING=UTF-8"
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+TimeoutStopSec=20
 
 [Install]
 WantedBy=multi-user.target
@@ -129,8 +145,9 @@ systemctl daemon-reload
 systemctl enable --now bot
 msg "bot.service installed & running ✅"
 
+
 ###################################################################
-# 6) Install monitor.service + monitor.timer
+# 6) Install monitor.timer
 ###################################################################
 echo -e "${YELLOW}[6/7] Installing monitor timer...${NC}"
 
@@ -140,13 +157,11 @@ Description=Deklan Node Monitor (oneshot)
 
 [Service]
 Type=oneshot
-EnvironmentFile=$BOT_DIR/.env
+EnvironmentFile=-$BOT_DIR/.env
 WorkingDirectory=$BOT_DIR
 ExecStart=$BOT_DIR/.venv/bin/python $BOT_DIR/monitor.py
-
 StandardOutput=journal
 StandardError=journal
-Environment="PYTHONUNBUFFERED=1"
 EOF
 
 cat >/etc/systemd/system/monitor.timer <<EOF
@@ -156,7 +171,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Timer]
-OnBootSec=5m
+OnBootSec=90
 OnUnitActiveSec=3h
 Persistent=true
 Unit=monitor.service
@@ -165,27 +180,27 @@ Unit=monitor.service
 WantedBy=timers.target
 EOF
 
-# Override interval if MONITOR_EVERY_MINUTES exists
-if grep -q '^MONITOR_EVERY_MINUTES=' .env; then
-  MIN=$(grep '^MONITOR_EVERY_MINUTES=' .env | cut -d'=' -f2)
-  if [[ "$MIN" =~ ^[0-9]+$ ]]; then
-    HOURS=$(( MIN / 60 ))
-    REM=$(( MIN % 60 ))
 
-    INTERVAL=""
-    [[ $HOURS -gt 0 ]] && INTERVAL="${HOURS}h"
-    [[ $REM -gt 0 ]] && INTERVAL="${INTERVAL}${REM}m"
+# Interval override via MONITOR_EVERY_MINUTES
+MIN=$(grep '^MONITOR_EVERY_MINUTES=' .env | cut -d'=' -f2 || echo "")
+if [[ "$MIN" =~ ^[0-9]+$ ]]; then
+  HOURS=$(( MIN / 60 ))
+  REM=$(( MIN % 60 ))
+  INTERVAL=""
+  [[ $HOURS -gt 0 ]] && INTERVAL="${HOURS}h"
+  [[ $REM -gt 0 ]] && INTERVAL="${INTERVAL}${REM}m"
 
-    if [[ -n "$INTERVAL" ]]; then
-      sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=$INTERVAL/" /etc/systemd/system/monitor.timer
-      msg "Monitor interval override → $INTERVAL"
-    fi
+  if [[ -n "$INTERVAL" ]]; then
+    sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=$INTERVAL/" \
+      /etc/systemd/system/monitor.timer
+    msg "Monitor interval override → $INTERVAL"
   fi
 fi
 
 systemctl daemon-reload
 systemctl enable --now monitor.timer
 msg "monitor.timer installed & active ✅"
+
 
 ###################################################################
 # 7) DONE
@@ -196,6 +211,6 @@ ${GREEN}✅ INSTALLATION COMPLETE!
 Check bot:        systemctl status bot
 Check monitor:    systemctl status monitor.timer
 Force monitor:    systemctl start monitor.service
-Live logs:        journalctl -u bot -f
+Bot logs:         journalctl -u bot -f
 ${NC}
 "
