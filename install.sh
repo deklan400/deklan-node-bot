@@ -18,7 +18,10 @@ ${CYAN}=====================================
 # ----------------------------------------------------
 echo -e "${YELLOW}[1/7] Installing dependencies...${NC}"
 sudo apt update -y
-sudo apt install -y python3 python3-pip python3-venv git
+sudo apt install -y python3 python3-pip python3-venv git >/dev/null 2>&1 || {
+  echo -e "${RED}❌ Failed installing dependencies${NC}"
+  exit 1
+}
 
 # ----------------------------------------------------
 # Clone repo
@@ -45,7 +48,8 @@ if [ ! -d ".venv" ]; then
 fi
 
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt >/dev/null 2>&1
+echo -e "${GREEN}✅ Python deps installed${NC}"
 
 # ----------------------------------------------------
 # ENV setup
@@ -92,9 +96,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now bot
 echo -e "${GREEN}✅ bot.service installed & started${NC}"
 
-
 # ----------------------------------------------------
-# Create monitor.service + monitor.timer
+# monitor.service + monitor.timer
 # ----------------------------------------------------
 echo -e "${YELLOW}[6/7] Installing monitor.timer...${NC}"
 
@@ -107,16 +110,22 @@ Type=oneshot
 EnvironmentFile=/opt/deklan-node-bot/.env
 WorkingDirectory=/opt/deklan-node-bot
 ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/monitor.py
+StandardOutput=journal
+StandardError=journal
+Environment="PYTHONUNBUFFERED=1"
 EOF
 
 sudo tee /etc/systemd/system/monitor.timer >/dev/null <<EOF
 [Unit]
 Description=Run Deklan Node Monitor every 3 hours
+After=network-online.target
+Wants=network-online.target
 
 [Timer]
 OnBootSec=5m
 OnUnitActiveSec=3h
 Persistent=true
+Unit=monitor.service
 
 [Install]
 WantedBy=timers.target
@@ -132,11 +141,12 @@ if grep -q '^MONITOR_EVERY_MINUTES=' .env; then
         REM=$(( MIN % 60 ))
 
         INTERVAL=""
-        if [ "$HOURS" -gt 0 ]; then INTERVAL="${HOURS}h"; fi
-        if [ "$REM" -gt 0 ]; then INTERVAL="${INTERVAL}${REM}m"; fi
+        [[ $HOURS -gt 0 ]] && INTERVAL="${HOURS}h"
+        [[ $REM -gt 0 ]] && INTERVAL="${INTERVAL}${REM}m"
 
         if [ -n "$INTERVAL" ]; then
-            sudo sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${INTERVAL}/" /etc/systemd/system/monitor.timer
+            sudo sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${INTERVAL}/" \
+              /etc/systemd/system/monitor.timer
             echo -e "${GREEN}⏱ Custom interval = ${INTERVAL}${NC}"
         fi
     fi
@@ -144,6 +154,7 @@ fi
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now monitor.timer
+
 
 # ----------------------------------------------------
 # Done
