@@ -3,7 +3,7 @@ import os
 import time
 import psutil
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.parse
 import urllib.request
 import json
@@ -27,7 +27,7 @@ FLAG_FILE = "/tmp/.node_status.json"
 
 
 # ======================================================
-# SHELL HELPERS
+# EXEC / SHELL
 # ======================================================
 def shell(cmd: str) -> str:
     try:
@@ -35,11 +35,11 @@ def shell(cmd: str) -> str:
             cmd, shell=True, stderr=subprocess.STDOUT, text=True
         ).strip()
     except subprocess.CalledProcessError as e:
-        return e.output.strip()
+        return (e.output or "").strip()
 
 
 # ======================================================
-# TELEGRAM
+# TG SEND
 # ======================================================
 def send(msg: str):
     """Send Telegram text message."""
@@ -69,20 +69,20 @@ def clean(text: str) -> str:
 
 
 # ======================================================
-# STATUS CACHE (avoid spam)
+# STATUS CACHE
 # ======================================================
 def load_flag():
     if not os.path.isfile(FLAG_FILE):
-        return {"last_status": "unknown"}
+        return {"last_status": "unknown", "reinstalled": False}
     try:
         return json.load(open(FLAG_FILE))
     except:
-        return {"last_status": "unknown"}
+        return {"last_status": "unknown", "reinstalled": False}
 
 
-def save_flag(status: str):
+def save_flag(status: str, reinstalled=False):
     with open(FLAG_FILE, "w") as f:
-        json.dump({"last_status": status}, f)
+        json.dump({"last_status": status, "reinstalled": reinstalled}, f)
 
 
 # ======================================================
@@ -93,12 +93,19 @@ def is_active() -> bool:
 
 
 def sys_brief() -> str:
+    """CPU / RAM / Disk + uptime."""
     try:
-        cpu = psutil.cpu_percent(interval=0.4)
-        vm = psutil.virtual_memory()
-        du = psutil.disk_usage("/")
+        cpu = psutil.cpu_percent(interval=0.6)
+        vm  = psutil.virtual_memory()
+        du  = psutil.disk_usage("/")
+        uptime = timedelta(seconds=int(time.time() - psutil.boot_time()))
 
-        return f"CPU {cpu:.1f}% • RAM {vm.percent:.1f}% • Disk {du.percent:.1f}%"
+        return (
+            f"CPU {cpu:.1f}% • "
+            f"RAM {vm.percent:.1f}% • "
+            f"Disk {du.percent:.1f}% • "
+            f"Up {uptime}"
+        )
     except:
         return "(sys info unavailable)"
 
@@ -117,12 +124,15 @@ def try_restart() -> bool:
 
 
 # ======================================================
-# AUTO REPAIR
+# AUTO REPAIR LOGIC
 # ======================================================
 def try_reinstall():
     tmp = "/tmp/reinstall.sh"
-    shell(f"curl -s -o {tmp} {AUTO_REPO}reinstall.sh")
+    url = f"{AUTO_REPO}reinstall.sh"
+
+    shell(f"curl -s -o {tmp} {url}")
     shell(f"chmod +x {tmp}")
+
     return shell(f"bash {tmp}")
 
 
@@ -141,7 +151,7 @@ def main():
                 f"{sys_brief()}\n"
                 f"{last_round()}"
             )
-        save_flag("up")
+        save_flag("up", False)
         return
 
     # 🚨 DOWN
@@ -157,22 +167,24 @@ def main():
             f"🟢 *{NODE_NAME}* RECOVERED @ {t}\n"
             f"{sys_brief()}"
         )
-        save_flag("up")
+        save_flag("up", False)
         return
 
-    # 🔧 Try auto reinstall
-    send(f"⚙️ Restart failed… trying auto reinstall…")
-    auto = try_reinstall()
+    # 🔧 Try reinstall once only
+    if not state.get("reinstalled", False):
+        send("⚙️ Restart failed… trying auto reinstall…")
+        try_reinstall()
+        time.sleep(10)
 
-    time.sleep(10)
-
-    if is_active():
-        send(
-            f"✅ *{NODE_NAME}* RECOVERED AFTER REINSTALL @ {t}\n"
-            f"{sys_brief()}"
-        )
-        save_flag("up")
-        return
+        if is_active():
+            send(
+                f"✅ *{NODE_NAME}* RECOVERED AFTER REINSTALL @ {t}\n"
+                f"{sys_brief()}"
+            )
+            save_flag("up", False)
+            return
+        else:
+            save_flag("down", True)
 
     # ❌ FAILED
     raw_logs = shell(f"journalctl -u {SERVICE} -n {LOG_LINES} --no-pager")
@@ -187,7 +199,7 @@ def main():
         f"```\n{logs}\n```"
     )
 
-    save_flag("down")
+    save_flag("down", True)
 
 
 if __name__ == "__main__":
