@@ -1,8 +1,19 @@
 [Unit]
 Description=Deklan Node Monitor (oneshot)
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
 EnvironmentFile=/opt/deklan-node-bot/.env
 WorkingDirectory=/opt/deklan-node-bot
-ExecStart=/usr/bin/python3 /opt/deklan-node-bot/monitor.py
+
+# gunakan virtualenv
+ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/monitor.py
+
+# agar log tampil di journalctl
+StandardOutput=journal
+StandardError=journal
+
+# memastikan output langsung flush
+Environment="PYTHONUNBUFFERED=1"
