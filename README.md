@@ -1,44 +1,60 @@
-# 🤖 Deklan Node Bot  
-> Telegram Control & Auto-Monitor for Gensyn RL-Swarm Nodes 🚀  
+<h1 align="center">🖤 Deklan Node Bot</h1>
 
-Bot ini memungkinkan kamu memantau & mengontrol node Gensyn dari Telegram.  
-Tanpa perlu login server → praktis, aman, otomatis ✅  
+<p align="center">
+  Control & Auto-Monitor Gensyn RL-Swarm Nodes via Telegram
+</p>
 
----
-
-## ✨ Fitur Utama
-
-✅ Cek CPU / RAM / Disk / Uptime  
-✅ Start / Stop / Restart Node  
-✅ Ambil Logs terbaru  
-✅ Cek Round terakhir  
-✅ UI tombol Telegram (bukan command)  
-✅ Auto-monitor tiap X menit  
-✅ Auto restart + notifikasi  
-✅ Akses aman (whitelist user)  
-✅ Systemd service → auto start  
+<p align="center">
+  <img src="https://img.shields.io/badge/Gensyn-Testnet-blue?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Telegram-Bot-green?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Auto--Monitor-YES-orange?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Systemd-Supported-yellow?style=for-the-badge">
+</p>
 
 ---
 
-## 🚀 Instalasi Cepat
+## 🧠 Overview
 
-> Jalankan perintah ini di VPS:
+**Deklan Node Bot** = cara termudah untuk mengontrol & memonitor node **Gensyn RL-Swarm**  
+→ Cukup lewat Telegram ✅  
+
+Tanpa SSH, tanpa ribet.  
+Start / Stop / Restart / Logs, semua di tombol Telegram.
+
+---
+
+## ⚡ Features
+
+✅ CPU / RAM / Disk / Uptime checker  
+✅ Start/Stop/Restart node  
+✅ Cek round terakhir  
+✅ Display logs langsung di Telegram  
+✅ Auto monitoring per X menit  
+✅ Auto-restart kalau node mati  
+✅ Notif Telegram otomatis  
+✅ systemd daemon → auto start  
+✅ Allowlist user → aman  
+
+---
+
+## 🚀 Install
+
+> Jalankan perintah ini:
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh)
 ```
 
-Bot otomatis:
-✅ Install dependency  
-✅ Clone repo  
-✅ Setup systemd  
-✅ Start bot  
+Bot:
+✔ install dependensi  
+✔ copy service  
+✔ auto start  
 
 ---
 
 ## ⚙️ Konfigurasi `.env`
 
-Edit:
+Edit file:
 
 ```bash
 nano /opt/deklan-node-bot/.env
@@ -47,106 +63,112 @@ nano /opt/deklan-node-bot/.env
 Contoh:
 
 ```
-BOT_TOKEN=123456:abcdefgxxxxxxxx
-CHAT_ID=12345678
+BOT_TOKEN=YOUR_BOT_TOKEN
+CHAT_ID=123456789
 ALLOWED_USER_IDS=1234,5678
 NODE_NAME=Gensyn-VPS-01
 MONITOR_EVERY_MINUTES=180
 LOG_LINES=50
 ```
 
-| Key | Wajib | Fungsi |
-|-----|:----:|--------|
-| BOT_TOKEN | ✅ | Token bot |
+| Key | Wajib | Deskripsi |
+|-----|:----:|-----------|
+| BOT_TOKEN | ✅ | Token Telegram |
 | CHAT_ID | ✅ | ID admin |
-| ALLOWED_USER_IDS | ❌ | Banyak user |
+| ALLOWED_USER_IDS | ❌ | Daftar allowed user |
 | NODE_NAME | ❌ | Nama VPS |
 | MONITOR_EVERY_MINUTES | ❌ | Interval |
 | LOG_LINES | ❌ | Baris log |
 
-> Minimal wajib → BOT_TOKEN + CHAT_ID ✅  
+> Minimal wajib → BOT_TOKEN & CHAT_ID
 
 ---
 
-## 🎛 Systemd
+## 🎛 Systemd Usage
 
-### Cek status bot
+Cek status bot:
+
 ```bash
 systemctl status bot
 ```
 
-### Restart bot
+Restart bot:
+
 ```bash
 systemctl restart bot
 ```
 
-### Live logs
+Logs:
+
 ```bash
 journalctl -u bot -f
 ```
 
-### Jalankan monitor manual
+Monitor now:
+
 ```bash
 systemctl start monitor.service
 ```
 
-### Cek timer
+Cek timer:
+
 ```bash
 systemctl status monitor.timer
 ```
 
 ---
 
-## 💬 Telegram Control
+## 💬 Telegram UI
 
-Ketik:
+👉 Ketik:
 
 ```
 /start
 ```
 
-Bot menampilkan tombol menu:
+📌 Akan muncul tombol:
 
 | Tombol | Fungsi |
 |--------|--------|
 | 📊 Status | CPU/RAM/Disk/Uptime |
-| 🟢 Start | Start service |
-| 🔴 Stop | Stop service |
-| 🔁 Restart | Restart |
+| 🟢 Start | Start node |
+| 🔴 Stop | Stop node |
+| 🔁 Restart | Restart node |
 | 📜 Logs | Logs |
-| ℹ️ Round | Round |
+| 🔢 Round | Round |
 
 ---
 
-## 🔔 Contoh Notifikasi
+## 🔔 Sample Alerts
 
+✅ Node OK
 ```
-✅ Gensyn-01 OK @ 2025-01-01 10:33
-CPU 35% • RAM 62% • Disk 70%
-Joining round: 18735
-```
-
-Jika node mati:
-```
-🚨 Gensyn-01 DOWN @ 10:33
-Attempting auto-restart…
+✅ Gensyn-01 OK
+CPU 31% • RAM 67% • Disk 70%
+Round: 18735
 ```
 
-Jika pulih:
+⚠ Node Mati
 ```
-🟢 Gensyn-01 recovered
-CPU 35% • RAM 61% • Disk 71%
+🚨 Gensyn-01 DOWN
+Auto-restart…
 ```
 
-Jika gagal:
+Recovered
+```
+🟢 Node recovered
+CPU 30% • RAM 63% • Disk 71%
+```
+
+Failed
 ```
 ❌ FAILED TO RECOVER
-(last 80 log lines)
+(last logs)
 ```
 
 ---
 
-## 📁 Struktur Repo
+## 📁 Struktur
 
 ```
 /opt/deklan-node-bot
@@ -174,32 +196,29 @@ systemctl daemon-reload
 
 ---
 
-## 🔌 Service Target
+## 🌙 Screenshots
 
-Bot mengontrol service bernama:
+> Tambahkan folder `images/` di repo
 
 ```
-gensyn
-```
-
-> Pastikan node jalan via systemd:
-```
-systemctl status gensyn
+/images/menu.png
+/images/status.png
+/images/logs.png
 ```
 
 ---
 
 ## 🛣 Roadmap
 
-- Multi-server support  
-- Web dashboard  
-- Auto update node  
-- Multi alert rules  
-- Multi log collector  
+- Multi-node sync  
+- Web UI dashboard  
+- Auto update  
+- More Alert types  
+- Cluster support  
 
 ---
 
-## ❤️ Credits  
+## ❤️ Credits
 
 Built with ❤️ by **Deklan**
 
