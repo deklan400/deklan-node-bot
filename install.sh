@@ -25,9 +25,15 @@ fi
 cd /opt/deklan-node-bot
 
 # ----------------------------------------------------
-# Python deps
+# Python venv
 # ----------------------------------------------------
-sudo pip3 install -r requirements.txt --break-system-packages || true
+if [ ! -d ".venv" ]; then
+    python3 -m venv .venv
+    echo "✅ Created virtualenv"
+fi
+
+source .venv/bin/activate
+pip install -r requirements.txt
 
 # ----------------------------------------------------
 # ENV setup
@@ -35,7 +41,7 @@ sudo pip3 install -r requirements.txt --break-system-packages || true
 if [ ! -f ".env" ]; then
     cp .env.example .env
     echo ""
-    echo "⚠️  Edit file env:"
+    echo "⚠️  Edit env:"
     echo "   nano /opt/deklan-node-bot/.env"
     echo "   → isi BOT_TOKEN & CHAT_ID wajib"
 fi
@@ -47,15 +53,30 @@ sudo chmod 600 .env
 # ----------------------------------------------------
 # Install bot systemd
 # ----------------------------------------------------
-sudo cp bot.service /etc/systemd/system/bot.service
+sudo tee /etc/systemd/system/bot.service >/dev/null <<EOF
+[Unit]
+Description=Deklan Node Bot
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/deklan-node-bot
+EnvironmentFile=/opt/deklan-node-bot/.env
+ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 sudo systemctl daemon-reload
 sudo systemctl enable --now bot
 
-
 # ----------------------------------------------------
-# Create monitor.service
+# monitor.service
 # ----------------------------------------------------
-sudo tee /etc/systemd/system/monitor.service >/dev/null <<'EOF'
+sudo tee /etc/systemd/system/monitor.service >/dev/null <<EOF
 [Unit]
 Description=Deklan Node Monitor (oneshot)
 
@@ -63,14 +84,13 @@ Description=Deklan Node Monitor (oneshot)
 Type=oneshot
 EnvironmentFile=/opt/deklan-node-bot/.env
 WorkingDirectory=/opt/deklan-node-bot
-ExecStart=/usr/bin/python3 /opt/deklan-node-bot/monitor.py
+ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/monitor.py
 EOF
 
-
 # ----------------------------------------------------
-# Create monitor.timer
+# monitor.timer
 # ----------------------------------------------------
-sudo tee /etc/systemd/system/monitor.timer >/dev/null <<'EOF'
+sudo tee /etc/systemd/system/monitor.timer >/dev/null <<EOF
 [Unit]
 Description=Run Deklan Node Monitor every 3 hours
 
@@ -83,12 +103,12 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
-
 # ----------------------------------------------------
-# Custom interval override
+# Custom monitor override
 # ----------------------------------------------------
 if grep -q '^MONITOR_EVERY_MINUTES=' .env; then
     MIN=$(grep '^MONITOR_EVERY_MINUTES=' .env | cut -d'=' -f2)
+
     if [[ "$MIN" =~ ^[0-9]+$ ]]; then
         HOURS=$(( MIN / 60 ))
         REM=$(( MIN % 60 ))
@@ -99,11 +119,10 @@ if grep -q '^MONITOR_EVERY_MINUTES=' .env; then
 
         if [ -n "$INTERVAL" ]; then
             sudo sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${INTERVAL}/" /etc/systemd/system/monitor.timer
-            echo "⏱  Custom monitor interval = ${INTERVAL}"
+            echo "⏱ Custom monitor interval = ${INTERVAL}"
         fi
     fi
 fi
-
 
 # ----------------------------------------------------
 # Enable services
@@ -117,5 +136,5 @@ echo "------------------------------------"
 echo "- Check bot:       systemctl status bot"
 echo "- Check monitor:   systemctl status monitor.timer"
 echo "- Run monitor now: systemctl start monitor.service"
-echo "- Logs bot:        journalctl -u bot -f"
+echo "- Bot logs:        journalctl -u bot -f"
 echo ""
