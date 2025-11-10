@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+User=root
 EnvironmentFile=/opt/deklan-node-bot/.env
 WorkingDirectory=/opt/deklan-node-bot
 
@@ -16,4 +17,7 @@ StandardOutput=journal
 StandardError=journal
 
 # memastikan output langsung flush
-Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHON_UNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
