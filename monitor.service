@@ -19,8 +19,12 @@ StandardError=journal
 # Ensure instant stdout flush
 Environment="PYTHONUNBUFFERED=1"
 
-# Avoid stuck state
-TimeoutSec=60
+# Avoid hang
+TimeoutSec=90
+KillMode=process
+
+# no restart — because oneshot
+Restart=no
 
 [Install]
 WantedBy=multi-user.target
