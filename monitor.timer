@@ -1,5 +1,7 @@
 [Unit]
 Description=Run Deklan Node Monitor every 3 hours
+After=network-online.target
+Wants=network-online.target
 
 [Timer]
 OnBootSec=5m
