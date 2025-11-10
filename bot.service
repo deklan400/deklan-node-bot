@@ -6,28 +6,36 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
+
+# Dir utama
 WorkingDirectory=/opt/deklan-node-bot
+
+# Load env
 EnvironmentFile=/opt/deklan-node-bot/.env
 
-# Use virtualenv
+# Virtualenv
 ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/bot.py
 
-# Auto restart
+# Restart policy
 Restart=always
-RestartSec=5
+RestartSec=3
 
-# Improve limits
+# Limit improvements
 LimitNOFILE=65535
 
 # Kill behavior
-KillMode=process
+KillMode=mixed
 
 # Logging
 StandardOutput=journal
 StandardError=journal
 
-# Ensure environment loads properly
+# Extra env
 Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONIOENCODING=UTF-8"
+
+# Time to stop properly
+TimeoutStopSec=20
 
 [Install]
 WantedBy=multi-user.target
