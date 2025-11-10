@@ -61,3 +61,19 @@ journalctl -u bot -f
 
 ---
 
+## Quick Install
+bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh)
+
+## Konfigurasi
+nano /opt/deklan-node-bot/.env
+# isi BOT_TOKEN, CHAT_ID, optional ALLOWED_USER_IDS, NODE_NAME, MONITOR_EVERY_MINUTES
+
+## Jalankan / Cek
+systemctl status bot
+systemctl status monitor.timer
+systemctl start monitor.service   # jalankan cek manual sekarang
+
+## Telegram
+- /start → tampil menu
+- Tombol Status/Start/Stop/Restart/Logs/Round
+
