@@ -4,18 +4,19 @@ After=network-online.target
 Wants=network-online.target
 
 [Timer]
-# Start 5 minutes after boot
+# Delay run after boot
 OnBootSec=5m
 
-# Default interval — will be updated by install.sh if env exists
+# Default interval — overridden via install.sh
 OnUnitActiveSec=3h
 
-# Spread monitor runs to reduce API burst
+# Reduce API spike / system congestion
 RandomizedDelaySec=45
 
-# Remember schedule even after reboot
+# Maintain timer schedule across reboots
 Persistent=true
 
+# Target unit
 Unit=monitor.service
 
 [Install]
