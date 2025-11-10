@@ -3,7 +3,7 @@ Description=Deklan Node Monitor (oneshot)
 After=network-online.target
 Wants=network-online.target
 
-# OPTIONAL — only start if monitor exists
+# Pastikan file ada
 ConditionPathExists=/opt/deklan-node-bot/monitor.py
 ConditionPathExists=/opt/deklan-node-bot/.venv/bin/python
 
@@ -12,20 +12,25 @@ Type=oneshot
 User=root
 Group=root
 
-# Load ENV
+# ENV
 EnvironmentFile=-/opt/deklan-node-bot/.env
 
 # Working dir
 WorkingDirectory=/opt/deklan-node-bot
 
-# Exec
-ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/monitor.py
+# Smart Python runner
+ExecStart=/bin/bash -c '
+  if [ -x "/opt/deklan-node-bot/.venv/bin/python" ]; then
+      exec /opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/monitor.py;
+  else
+      exec /usr/bin/python3 /opt/deklan-node-bot/monitor.py;
+  fi
+'
 
 # Logging
 StandardOutput=journal
 StandardError=journal
 
-# Buffers
 Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONIOENCODING=UTF-8"
 
@@ -39,7 +44,7 @@ PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
 
-# oneshot → no restart
+# oneshot → does not restart
 Restart=no
 
 [Install]
