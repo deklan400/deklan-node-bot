@@ -100,8 +100,10 @@ def main():
     logs = shell(f"journalctl -u {SERVICE} -n {LOG_LINES} --no-pager")
     logs = logs[-3500:] if len(logs) > 3500 else logs
 
-    send(f"❌ *{NODE_NAME}* FAILED TO RECOVER\n"
-         f"Check last logs:\n```\n{logs}\n```")
+    send(
+        f"❌ *{NODE_NAME}* FAILED TO RECOVER\n"
+        f"Check last logs:\n```\n{logs}\n```"
+    )
 
 
 if __name__ == "__main__":
