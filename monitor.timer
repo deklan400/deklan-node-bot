@@ -1,12 +1,20 @@
 [Unit]
-Description=Run Deklan Node Monitor every 3 hours
+Description=Run Deklan Node Monitor every X hours
 After=network-online.target
 Wants=network-online.target
 
 [Timer]
+# Jalan 5 menit setelah boot
 OnBootSec=5m
+
+# Default interval tiap 3 jam
 OnUnitActiveSec=3h
+
+# Menyimpan waktu terakhir sehingga tetap terjadwal meski reboot
 Persistent=true
+
+# Fokus menjalankan monitor.service
+Unit=monitor.service
 
 [Install]
 WantedBy=timers.target
