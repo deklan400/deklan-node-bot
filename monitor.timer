@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Deklan Node Monitor every 3 hours
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=3h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
