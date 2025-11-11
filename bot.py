@@ -32,7 +32,10 @@ NODE_NAME = env("NODE_NAME", "deklan-node")
 SERVICE   = env("SERVICE_NAME", "gensyn")
 LOG_LINES = int(env("LOG_LINES", "80"))
 
-RL_DIR    = env("RL_DIR", "/root/rl_swarm")
+# ✅ FIXED — RL_DIR HARUS /root/rl-swarm
+RL_DIR    = env("RL_DIR", "/root/rl-swarm")
+
+# ✅ IDENTITY
 KEY_DIR   = env("KEY_DIR", "/root/deklan")
 
 ROUND_GREP = env("ROUND_GREP_PATTERN", "Joining round:")
@@ -74,11 +77,9 @@ def _shell(cmd: str) -> str:
 def _authorized(update: Update) -> bool:
     uid = str(update.effective_user.id)
 
-    # MUST be from admin chat
     if str(update.effective_chat.id) != CHAT_ID:
         return False
 
-    # If no extra list → only main admin
     if not ALLOWED_USER_IDS:
         return uid == CHAT_ID
 
@@ -224,7 +225,7 @@ def _run_remote(fname: str) -> str:
 
 
 # ======================================================
-# ULTRA-GLASS PANEL
+# PANEL
 # ======================================================
 def _escape_md(t: str) -> str:
     return t.replace("```", "'''")
@@ -653,7 +654,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Commands
     app.add_handler(CommandHandler("start",    start))
     app.add_handler(CommandHandler("help",     cmd_help))
     app.add_handler(CommandHandler("status",   cmd_status))
@@ -661,7 +661,6 @@ def main():
     app.add_handler(CommandHandler("restart",  cmd_restart))
     app.add_handler(CommandHandler("round",    cmd_round))
 
-    # Buttons + text
     app.add_handler(CallbackQueryHandler(handle_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
