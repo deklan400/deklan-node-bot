@@ -15,13 +15,15 @@ Group=root
 # Base folder
 WorkingDirectory=/opt/deklan-node-bot
 
-# ENV
+# ENV file
 EnvironmentFile=-/opt/deklan-node-bot/.env
 
-# Ensure PATH finds venv python + base python
+# Path include Python venv
 Environment="PATH=/opt/deklan-node-bot/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONIOENCODING=UTF-8"
 
-# Smart Python selector
+# Auto Python fallback
 ExecStart=/bin/bash -c '
   PYBIN="/opt/deklan-node-bot/.venv/bin/python";
   if [ ! -x "$PYBIN" ]; then
@@ -45,7 +47,7 @@ LimitNOFILE=65535
 TimeoutStopSec=25
 KillMode=mixed
 
-# System hardening
+# Security (safe defaults)
 NoNewPrivileges=yes
 PrivateTmp=true
 ProtectSystem=full
@@ -59,10 +61,6 @@ ProtectKernelLogs=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 PrivateDevices=yes
-
-# Python behavior
-Environment="PYTHONUNBUFFERED=1"
-Environment="PYTHONIOENCODING=UTF-8"
 
 
 [Install]
