@@ -2,13 +2,14 @@
 # -*- coding: utf-8 -*-
 
 """
-  Deklan Smart Monitor — v4.5
+  Deklan Smart Monitor — v4.5 (FINAL FIXED)
   Auto-Heal • Reinstall • Health Alert • Safe Clean
   by Deklan × GPT-5
 """
 
 import os, time, psutil, subprocess, json, urllib.parse, urllib.request
 from datetime import datetime, timedelta
+
 
 # ======================================================
 # ENV
@@ -22,11 +23,15 @@ NODE_NAME   = E("NODE_NAME", "deklan-node")
 SERVICE     = E("SERVICE_NAME", "gensyn")
 LOG_LINES   = int(E("LOG_LINES", "80"))
 
-AUTO_REPO   = E("AUTO_INSTALLER_GITHUB",
+AUTO_REPO   = E(
+    "AUTO_INSTALLER_GITHUB",
     "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
 )
 
-RL_DIR      = E("RL_DIR", "/root/rl_swarm")
+# ✅ FIXED → rl-swarm (dash)
+RL_DIR      = E("RL_DIR", "/root/rl-swarm")
+
+# ✅ identity folder unchanged
 KEY_DIR     = E("KEY_DIR", "/root/deklan")
 
 FLAG_FILE   = "/tmp/.node_status.json"
@@ -35,11 +40,12 @@ HEALTH_FILE = "/tmp/.health_alert"
 MAX_LOG   = int(E("LOG_MAX_CHARS", "3500"))
 MONITOR_TRY_REINSTALL = E("MONITOR_TRY_REINSTALL", "1") == "1"
 
+
 # ===== HEALTH THRESHOLDS =====
 TH_CPU  = int(E("ALERT_CPU",  "85"))
 TH_RAM  = int(E("ALERT_RAM",  "85"))
 TH_DISK = int(E("ALERT_DISK", "85"))
-ALERT_COOLDOWN = int(E("ALERT_COOLDOWN_HOURS", "6"))    # hours
+ALERT_COOLDOWN = int(E("ALERT_COOLDOWN_HOURS", "6"))  # hours
 
 
 # ======================================================
@@ -217,7 +223,6 @@ def main():
         tg(f"⚠️ *{NODE_NAME}* HIGH USAGE\n{msg}\n{sys_brief()}")
         health_mark()
 
-    # Light safe clean
     safe_clean()
 
     # ===== NODE OK =====
@@ -256,7 +261,7 @@ def main():
 
     tg(
         f"❌ *{NODE_NAME}* FAIL RECOVER @ {t}\n"
-        f"Needs manual fix.\n"
+        f"Need manual fix.\n"
         f"```\n{logs}\n```"
     )
 
