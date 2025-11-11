@@ -1,3 +1,4 @@
+cat >/etc/systemd/system/bot.service << 'EOF'
 [Unit]
 Description=Deklan Node Bot (Telegram Control)
 After=network-online.target
@@ -6,24 +7,18 @@ Wants=network-online.target
 StartLimitIntervalSec=60
 StartLimitBurst=15
 
-
 [Service]
 Type=simple
 User=root
 Group=root
 
-# Base folder
 WorkingDirectory=/opt/deklan-node-bot
-
-# ENV file
 EnvironmentFile=-/opt/deklan-node-bot/.env
 
-# Path include Python venv
 Environment="PATH=/opt/deklan-node-bot/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONIOENCODING=UTF-8"
 
-# Auto Python fallback
 ExecStart=/bin/bash -c '
   PYBIN="/opt/deklan-node-bot/.venv/bin/python";
   if [ ! -x "$PYBIN" ]; then
@@ -34,20 +29,16 @@ ExecStart=/bin/bash -c '
 
 ExecReload=/bin/kill -HUP $MAINPID
 
-# Auto restart
 Restart=always
 RestartSec=3
 
-# Logging
 StandardOutput=journal
 StandardError=journal
 
-# Limits
 LimitNOFILE=65535
 TimeoutStopSec=25
 KillMode=mixed
 
-# Security (safe defaults)
 NoNewPrivileges=yes
 PrivateTmp=true
 ProtectSystem=full
@@ -62,6 +53,6 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 PrivateDevices=yes
 
-
 [Install]
 WantedBy=multi-user.target
+EOF
