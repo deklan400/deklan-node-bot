@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 
 """
-  Deklan Smart Monitor — v3.1
-  Auto • Detect • Restart • Reinstall
+  Deklan Smart Monitor — v4.0
+  Auto • Detect • Restart • Reinstall • Docker check
+  by Deklan × GPT-5
 """
 
 import os, time, psutil, subprocess, json, urllib.parse, urllib.request
 from datetime import datetime, timedelta
-
 
 # ======================================================
 # ENV
@@ -30,7 +30,8 @@ RL_DIR      = E("RL_DIR", "/root/rl_swarm")
 KEY_DIR     = E("KEY_DIR", "/root/deklan")
 
 FLAG_FILE   = "/tmp/.node_status.json"
-
+MAX_LOG   = int(E("LOG_MAX_CHARS", "3500"))
+MONITOR_TRY_REINSTALL = E("MONITOR_TRY_REINSTALL", "1") == "1"
 
 # ======================================================
 # SHELL
@@ -88,10 +89,10 @@ def flag_set(s, once=False):
 
 
 # ======================================================
-# RL-SWARM SELF-HEAL
+# SELF-HEAL
 # ======================================================
 def fix_keys():
-    """Ensure RL_DIR/keys => KEY_DIR"""
+    """Ensure RL_DIR/keys → KEY_DIR"""
     if not os.path.isdir(RL_DIR):
         return
     t = os.path.join(RL_DIR, "keys")
@@ -101,8 +102,12 @@ def fix_keys():
     sh(f"ln -s {KEY_DIR} {t}")
 
 
+def docker_ok():
+    return "true" in sh("docker info >/dev/null 2>&1; echo $?") or False
+
+
 # ======================================================
-# CHECK
+# CHECK STATUS
 # ======================================================
 def is_up():
     return sh(f"systemctl is-active {SERVICE}") == "active"
@@ -114,13 +119,18 @@ def sys_brief():
         vm  = psutil.virtual_memory()
         du  = psutil.disk_usage("/")
         up  = timedelta(seconds=int(time.time() - psutil.boot_time()))
-        return f"CPU {cpu:.1f}% • RAM {vm.percent:.1f}% • Disk {du.percent:.1f}% • Up {up}"
+        return (
+            f"CPU {cpu:.1f}%  "
+            f"RAM {vm.percent:.1f}% "
+            f"Disk {du.percent:.1f}% "
+            f"UP {up}"
+        )
     except:
         return "(stats unavailable)"
 
 
 def last_round():
-    s = rf"journalctl -u {SERVICE} --no-pager | grep -E 'Joining round:' | tail -n1"
+    s = r"journalctl -u %s --no-pager | grep -E 'Joining round:' | tail -n1" % SERVICE
     out = sh(s)
     return out if out else "(no round info)"
 
@@ -148,13 +158,12 @@ def try_reinstall():
 def main():
     t = datetime.now().strftime("%Y-%m-%d %H:%M")
     flag = flag_load()
-
     fix_keys()
 
     # === UP ===
     if is_up():
         if flag["last"] != "up":
-            tg(f"✅ *{NODE_NAME}* is UP @ {t}\n{sys_brief()}\n{last_round()}")
+            tg(f"✅ *{NODE_NAME}* UP @ {t}\n{sys_brief()}\n{last_round()}")
         flag_set("up", False)
         return
 
@@ -162,32 +171,32 @@ def main():
     if flag["last"] != "down":
         tg(f"🚨 *{NODE_NAME}* DOWN @ {t}\n↪ restarting…")
 
-    # 1) restart
+    # 1) RESTART
     if try_restart():
         tg(f"🟢 *{NODE_NAME}* RECOVERED @ {t}\n{sys_brief()}")
         flag_set("up", False)
         return
 
-    # 2) reinstall once
-    if not flag["once"]:
+    # 2) REINSTALL (only once)
+    if MONITOR_TRY_REINSTALL and not flag["once"]:
         tg("⚙ Restart failed → reinstalling…")
         try_reinstall()
         time.sleep(10)
 
         if is_up():
-            tg(f"✅ *{NODE_NAME}* RECOVERED after REINSTALL @ {t}\n{sys_brief()}")
+            tg(f"✅ *{NODE_NAME}* REINSTALLED OK @ {t}\n{sys_brief()}")
             flag_set("up", False)
             return
         else:
             flag_set("down", True)
 
-    # 3) FAILED → dump logs
+    # FAILED
     raw = sh(f"journalctl -u {SERVICE} -n {LOG_LINES} --no-pager")
-    logs = clean(raw)[-3500:]
+    logs = clean(raw)[-MAX_LOG:]
 
     tg(
         f"❌ *{NODE_NAME}* FAIL RECOVER @ {t}\n"
-        f"Manual fix needed.\n"
+        f"Needs manual fix.\n"
         f"```\n{logs}\n```"
     )
 
