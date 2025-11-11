@@ -56,6 +56,7 @@ AUTO_REPO = env(
 if not BOT_TOKEN or not CHAT_ID:
     raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — set .env then restart bot")
 
+
 # ======================================================
 # HELPERS
 # ======================================================
@@ -77,22 +78,22 @@ def _authorized(update: Update) -> bool:
     return uid == CHAT_ID or uid in ALLOWED_USER_IDS
 
 
-async def _send_long(update_or_query, text: str, parse_mode="Markdown"):
+async def _send_long(upd_msg, text: str, parse_mode="Markdown"):
     CHUNK = 3800
     if len(text) <= CHUNK:
-        if hasattr(update_or_query, "edit_message_text"):
-            return await update_or_query.edit_message_text(text, parse_mode=parse_mode)
-        return await update_or_query.message.reply_text(text, parse_mode=parse_mode)
+        if hasattr(upd_msg, "edit_message_text"):
+            return await upd_msg.edit_message_text(text, parse_mode=parse_mode)
+        return await upd_msg.message.reply_text(text, parse_mode=parse_mode)
 
     parts = [text[i:i + CHUNK] for i in range(0, len(text), CHUNK)]
 
-    if hasattr(update_or_query, "edit_message_text"):
-        await update_or_query.edit_message_text(parts[0], parse_mode=parse_mode)
+    if hasattr(upd_msg, "edit_message_text"):
+        await upd_msg.edit_message_text(parts[0], parse_mode=parse_mode)
     else:
-        await update_or_query.message.reply_text(parts[0], parse_mode=parse_mode)
+        await upd_msg.message.reply_text(parts[0], parse_mode=parse_mode)
 
     for p in parts[1:]:
-        await update_or_query.message.reply_text(p, parse_mode=parse_mode)
+        await upd_msg.message.reply_text(p, parse_mode=parse_mode)
 
 
 # ======================================================
@@ -142,6 +143,32 @@ def _stats():
 
 
 # ======================================================
+# SWAP MANAGER
+# ======================================================
+def _set_swap(size_gb: int) -> str:
+    try:
+        size_mb = size_gb * 1024
+
+        cmds = [
+            "swapoff -a",
+            "sed -i '/swapfile/d' /etc/fstab",
+            "rm -f /swapfile",
+            f"fallocate -l {size_gb}G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count={size_mb}",
+            "chmod 600 /swapfile",
+            "mkswap /swapfile",
+            "swapon /swapfile",
+            "echo '/swapfile none swap sw 0 0' >> /etc/fstab"
+        ]
+        for c in cmds:
+            _shell(c)
+
+        return f"✅ Swap set → {size_gb} GB"
+
+    except Exception as e:
+        return f"❌ Swap failed: {e}"
+
+
+# ======================================================
 # REMOTE SCRIPT EXEC
 # ======================================================
 def _run_remote(fname: str) -> str:
@@ -163,6 +190,16 @@ def _run_remote(fname: str) -> str:
 # ======================================================
 # MENUS
 # ======================================================
+def _swap_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("16G", callback_data="swap_16")],
+        [InlineKeyboardButton("32G", callback_data="swap_32")],
+        [InlineKeyboardButton("64G", callback_data="swap_64")],
+        [InlineKeyboardButton("Custom", callback_data="swap_custom")],
+        [InlineKeyboardButton("⬅ Back", callback_data="back")],
+    ])
+
+
 def _installer_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📦 Install Node",   callback_data="inst_install")],
@@ -183,6 +220,10 @@ def _main_menu():
         [InlineKeyboardButton("🔁 Restart",   callback_data="restart")],
         [InlineKeyboardButton("📜 Logs",      callback_data="logs")],
         [InlineKeyboardButton("ℹ️ Round",     callback_data="round")],
+
+        # ✅ Swap menu
+        [InlineKeyboardButton("💾 Swap Manager", callback_data="swap")],
+
         [InlineKeyboardButton("🧩 Installer", callback_data="installer")],
         [InlineKeyboardButton("❓ Help",      callback_data="help")],
     ]
@@ -205,7 +246,7 @@ def _danger_menu():
 
 
 # ======================================================
-# HANDLERS
+# HANDLERS — COMMANDS
 # ======================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
@@ -287,6 +328,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = q.data
 
+    # Installer
     if action == "installer":
         return await q.edit_message_text(
             "🧩 *Installer Menu*",
@@ -303,7 +345,27 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # Danger Zone main
+    # SWAP MENU
+    if action == "swap":
+        return await q.edit_message_text(
+            "💾 *Swap Manager*",
+            parse_mode="Markdown",
+            reply_markup=_swap_menu()
+        )
+
+    if action.startswith("swap_"):
+        size = action.split("_")[1]
+
+        if size == "custom":
+            context.user_data["awaiting_custom_swap"] = True
+            return await q.edit_message_text(
+                "💾 Enter SWAP size in GB (example: 48)"
+            )
+
+        res = _set_swap(int(size))
+        return await _send_long(q, res, "Markdown")
+
+    # Danger Zone
     if action == "dz":
         return await q.edit_message_text(
             "⚠️ *Danger Zone — Password Required*",
@@ -311,7 +373,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=_danger_menu()
         )
 
-    # Danger Zone password
     if action.startswith("dz_"):
         context.user_data["awaiting_password"] = action
         return await q.edit_message_text(
@@ -325,7 +386,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=_main_menu()
         )
 
-    # Node Ops
+    # Node ops
     if action == "status":
         badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
         return await q.edit_message_text(
@@ -376,12 +437,12 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ======================================================
-# TEXT (for Installer & Danger validation)
+# TEXT HANDLER (INSTALL + DANGER + CUSTOM SWAP)
 # ======================================================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
-    # INSTALL CONFIRM
+    # Install confirm
     if "pending_inst" in context.user_data:
         mode = context.user_data.pop("pending_inst")
 
@@ -405,6 +466,18 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return await _send_long(update, f"✅ Done\n```\n{result}\n```", parse_mode="Markdown")
 
+    # Custom swap
+    if "awaiting_custom_swap" in context.user_data:
+        context.user_data.pop("awaiting_custom_swap")
+
+        try:
+            size = int(text)
+            res = _set_swap(size)
+        except:
+            res = "❌ Invalid number"
+
+        return await update.message.reply_text(res)
+
     # Danger Zone
     if "awaiting_password" in context.user_data:
         action = context.user_data.pop("awaiting_password")
@@ -415,7 +488,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Verified! Running...")
 
         if action == "dz_rm_node":
-            _shell(f"systemctl stop {SERVICE}; systemctl disable {SERVICE}; rm -f /etc/systemd/system/{SERVICE}.service; systemctl daemon-reload; rm -rf {RL_DIR}")
+            _shell(
+                f"systemctl stop {SERVICE}; "
+                f"systemctl disable {SERVICE}; "
+                f"rm -f /etc/systemd/system/{SERVICE}.service; "
+                f"systemctl daemon-reload; "
+                f"rm -rf {RL_DIR}"
+            )
             res = "Node removed"
 
         elif action == "dz_rm_docker":
@@ -425,7 +504,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             res = _shell("swapoff -a; rm -f /swapfile; sed -i '/swapfile/d' /etc/fstab")
 
         elif action == "dz_clean_all":
-            res = _shell(f"systemctl stop {SERVICE}; rm -rf {RL_DIR}; docker system prune -af; swapoff -a; rm -f /swapfile")
+            res = _shell(
+                f"systemctl stop {SERVICE}; "
+                f"rm -rf {RL_DIR}; "
+                f"docker system prune -af; "
+                f"swapoff -a; rm -f /swapfile"
+            )
 
         elif action == "dz_reboot":
             _shell("reboot")
