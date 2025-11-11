@@ -2,8 +2,7 @@
 set -euo pipefail
 
 ###################################################################
-#   DEKLAN NODE BOT INSTALLER — v3.8 FIXED
-#   Telegram control + Auto-monitor for RL-Swarm
+#   DEKLAN NODE BOT INSTALLER — v3.9 FINAL FIX
 ###################################################################
 
 GREEN="\e[32m"; RED="\e[31m"; YELLOW="\e[33m"; CYAN="\e[36m"; NC="\e[0m"
@@ -14,7 +13,7 @@ err()  { echo -e "${RED}❌ $1${NC}"; }
 banner() {
   echo -e "
 ${CYAN}===========================================
- ⚡ INSTALLING DEKLAN NODE BOT (v3.8)
+ ⚡ INSTALLING DEKLAN NODE BOT (v3.9)
 ===========================================${NC}
 "
 }
@@ -26,6 +25,10 @@ REPO="https://github.com/deklan400/deklan-node-bot"
 RL_DIR="/root/rl-swarm"
 KEY_DIR="/root/deklan"
 
+
+###################################################################
+# 1) Python deps
+###################################################################
 msg "[1/7] Installing dependencies…"
 apt update -y >/dev/null
 apt install -y python3 python3-venv python3-pip git curl jq >/dev/null
@@ -113,7 +116,7 @@ msg ".env generated ✅"
 
 
 ###################################################################
-# 5) SYMLINK KEYS
+# 5) KEYS LINK
 ###################################################################
 msg "[5/7] Checking RL-Swarm folder…"
 
@@ -134,7 +137,7 @@ fi
 
 
 ###################################################################
-# 6) bot.service FIXED
+# 6) bot.service
 ###################################################################
 msg "[6/7] Installing bot.service…"
 
@@ -161,10 +164,8 @@ Environment="PYTHONIOENCODING=UTF-8"
 
 ExecStart=/bin/bash -c '
   PYBIN="$BOT_DIR/.venv/bin/python"
-  if [ ! -x "$PYBIN" ]; then
-      PYBIN="$(command -v python3)"
-  fi
-  exec "\$PYBIN" $BOT_DIR/bot.py
+  [ -x "\$PYBIN" ] || PYBIN="$(command -v python3)"
+  exec "\$PYBIN" "$BOT_DIR/bot.py"
 '
 
 Restart=always
@@ -176,7 +177,6 @@ LimitNOFILE=65535
 [Install]
 WantedBy=multi-user.target
 EOF
-
 
 systemctl daemon-reload
 systemctl enable --now bot
@@ -203,9 +203,7 @@ EnvironmentFile=-$BOT_DIR/.env
 
 ExecStart=/bin/bash -c '
   PYBIN="$BOT_DIR/.venv/bin/python"
-  if [ ! -x "$PYBIN" ]; then
-      PYBIN="$(command -v python3)"
-  fi
+  [ -x "\$PYBIN" ] || PYBIN="$(command -v python3)"
   exec "\$PYBIN" monitor.py
 '
 
