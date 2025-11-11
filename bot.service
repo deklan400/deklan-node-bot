@@ -20,14 +20,10 @@ Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONIOENCODING=UTF-8"
 
 ExecStart=/bin/bash -c '
-  PYBIN="/opt/deklan-node-bot/.venv/bin/python";
-  if [ ! -x "$PYBIN" ]; then
-      PYBIN="$(command -v python3)";
-  fi;
+  PYBIN="/opt/deklan-node-bot/.venv/bin/python"
+  [ -x "$PYBIN" ] || PYBIN="$(command -v python3)"
   exec "$PYBIN" /opt/deklan-node-bot/bot.py
 '
-
-ExecReload=/bin/kill -HUP $MAINPID
 
 Restart=always
 RestartSec=3
