@@ -5,10 +5,9 @@
   <img src="https://i.ibb.co/3zxGBM4/GENSYN-BANNER.png" width="90%" />
 </p>
 
-<h1 align="center">🖤 Deklan Node Bot v2.4</h1>
+<h1 align="center">⚡ Deklan Node Bot — v3.6</h1>
 <p align="center">
-  Telegram Control Panel + Auto-Monitor + One-Click Installer<br>
-  for Gensyn RL-Swarm Nodes
+  Telegram Control Panel + Auto-Monitor + Swap Manager + One-Click Installer
 </p>
 
 <p align="center">
@@ -16,15 +15,15 @@
   <img src="https://img.shields.io/badge/Telegram-Bot-green?style=for-the-badge">
   <img src="https://img.shields.io/badge/Auto--Install-YES-orange?style=for-the-badge">
   <img src="https://img.shields.io/badge/Systemd-Supported-yellow?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Linux-Ubuntu%2022.04-purple?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Linux-Ubuntu%2020.04%20%7C%2022.04-purple?style=for-the-badge">
 </p>
 
 ---
 
 ## 🧠 Overview
 
-**Deklan Node Bot** adalah Telegram Bot untuk mengontrol & monitoring  
-**Gensyn RL-Swarm Node tanpa SSH!**
+**Deklan Node Bot** = Telegram bot untuk kontrol & monitoring  
+**Gensyn RL-Swarm Node TANPA SSH**
 
 ✅ Start / Stop / Restart  
 ✅ CPU / RAM / Disk / Uptime  
@@ -32,77 +31,74 @@
 ✅ Latest Round  
 ✅ Auto-Monitor + Auto-Restart  
 ✅ Auto-Reinstall  
+✅ Swap Manager (16G / 32G / 64G / Custom)  
 ✅ One-Click Installer  
-✅ Danger Zone (Password)  
+✅ Danger Zone (password)  
 ✅ Multi admin  
-✅ AUTO_INSTALLER → update installer tanpa update bot  
-✅ Anti-Spam Alert (status cache)  
+✅ AUTO_INSTALLER → update script remote  
+✅ No-spam UP/DOWN  
+✅ Interactive .env prompt saat install  
 
-> Semua control bisa dari HP 📱
+> Semua cukup dari Telegram HP 📱
 
 ---
 
-## ⚡ Features
+## ✨ Features
 
-- Telegram menu
+- Full interactive Telegram menu
 - Systemd integration
+- Auto-Monitor (timer)
+- Auto-Restart + Auto-Reinstall
+- CPU/RAM/Disk Monitoring
+- Dynamic Round tracking
 - Log viewer (journalctl)
-- CPU / RAM / Disk Monitoring
-- Round detection
-- Auto-monitor
-- Auto-restart
-- Auto-reinstall
-- UP/DOWN notification
-- Anti-Spam (no spam repeat UP/DOWN)
-- Remote installer script
-- Multiple admin
-- Danger Zone (secure)
+- Swap Manager
+- Multiple admin support
+- Remote installer integration
+- Danger Zone (Hard cleanup)
+- No spam alert (state cached)
 
 ---
 
-## 🚀 Quick Install
+# 🚀 Quick Install
 
-> Jalankan di VPS Ubuntu
+> Jalankan di VPS
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh)
 ```
 
-Installer akan:
+Installer otomatis:
 ✅ Install dependencies  
 ✅ Clone repo  
 ✅ Setup virtualenv  
+✅ Tanya BOT_TOKEN + CHAT_ID  
 ✅ Generate `.env`  
 ✅ Install + start bot.service  
 ✅ Install + start monitor.timer  
 
+Tidak perlu edit .env manual ✅
+
 ---
 
-## ⚙️ Konfigurasi `.env`
+## 🔧 ENV (.env)
 
-```bash
-nano /opt/deklan-node-bot/.env
-```
-
-Isi minimal:
+Installer sekarang **tanya otomatis**:
 
 ```
-BOT_TOKEN=YOUR_TOKEN
-CHAT_ID=123456
+BOT_TOKEN=
+CHAT_ID=
+ALLOWED_USER_IDS=
+ENABLE_DANGER_ZONE=
+DANGER_PASS=
 ```
 
-Opsional:
+**Lokasi file:**
+```
+/opt/deklan-node-bot/.env
+```
 
-```
-ALLOWED_USER_IDS=12345,98765
-SERVICE_NAME=gensyn
-NODE_NAME=Gensyn-VPS
-LOG_LINES=80
-MONITOR_EVERY_MINUTES=180
-ENABLE_DANGER_ZONE=1
-DANGER_PASS=12345
-AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/
-```
+> Bisa diedit manual setelah install
 
 ---
 
@@ -110,28 +106,30 @@ AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoins
 
 | Key | Wajib | Fungsi |
 |------|-------|--------|
-| BOT_TOKEN | ✅ | Token bot Telegram |
-| CHAT_ID | ✅ | Admin |
-| ALLOWED_USER_IDS | ❌ | Extra admins |
-| SERVICE_NAME | ❌ | Target service |
+| BOT_TOKEN | ✅ | Token bot |
+| CHAT_ID | ✅ | Admin utama |
+| ALLOWED_USER_IDS | ❌ | Extra admin |
+| SERVICE_NAME | ❌ | Nama service |
 | NODE_NAME | ❌ | Nama VPS |
-| LOG_LINES | ❌ | Baris logs |
-| MONITOR_EVERY_MINUTES | ❌ | Interval monitor |
-| ENABLE_DANGER_ZONE | ❌ | Aktifkan menu danger |
-| DANGER_PASS | ❌ | Password Danger |
-| AUTO_INSTALLER_GITHUB | ✅ | Source auto installer |
+| LOG_LINES | ❌ | Log lines |
+| MONITOR_EVERY_MINUTES | ❌ | Interval monitoring |
+| ENABLE_DANGER_ZONE | ❌ | Danger Zone on/off |
+| DANGER_PASS | ❌ | Password Danger Zone |
+| AUTO_INSTALLER_GITHUB | ✅ | Source installer |
+| RL_DIR | ✅ | Folder RL-Swarm |
+| KEY_DIR | ✅ | Folder identity |
 
 ---
 
-## 📡 Telegram Commands
+# 🤖 Telegram Commands
 
 | Command | Fungsi |
 |--------|--------|
 | /start | Menu |
-| /status | Show resource |
+| /status | Info resource |
 | /logs | Show logs |
 | /restart | Restart node |
-| /round | Show last round |
+| /round | Last round |
 | /help | Help |
 
 ---
@@ -145,20 +143,39 @@ AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoins
 | 🔴 Stop | Stop node |
 | 🔁 Restart | Restart |
 | 📜 Logs | Lihat logs |
-| ℹ️ Round | Last round |
-| 🧩 Installer | Menu installer |
-| ⚠ Danger Zone | Tools berbahaya |
+| ℹ️ Round | Info round |
+| 💾 Swap Manager | 16G / 32G / 64G / custom |
+| 🧩 Installer | Install/update/reinstall/uninstall |
+| ⚠ Danger Zone | Hard tools |
 
 ---
 
-## 🔧 Installer Menu
+# 💾 Swap Manager
 
-Remote script via:
+Terdapat menu:
+
+- 16G
+- 32G
+- 64G
+- Custom
+
+Custom → user ketik angka (GB)
+
+Contoh:
+```
+48   → swap jadi 48G
+```
+
+---
+
+# 🔧 Installer Menu
+
+Script diambil dari:
 ```
 AUTO_INSTALLER_GITHUB
 ```
 
-Fitur:
+Pilihan:
 - Install
 - Reinstall
 - Update
@@ -166,28 +183,12 @@ Fitur:
 
 Flow:
 1) Klik tombol  
-2) Bot konfirmasi  
-3) Ketik `YES`  
+2) Diminta konfirmasi  
+3) Reply: `YES`  
 
 ---
 
-## ⚙️ Auto Installer (AUTO_REPO)
-
-All installer diambil dari:
-
-```
-https://github.com/deklan400/deklan-autoinstall
-```
-
-Supports:
-- install.sh
-- reinstall.sh
-- update.sh
-- uninstall.sh
-
----
-
-## 🛰 Auto Monitor
+## ⚙️ Auto-Monitor
 
 Systemd timer akan:
 - Cek status node
@@ -215,7 +216,7 @@ D -->|Fail| E(Notify + Logs)
 
 ---
 
-## 🔥 Danger Zone
+# 🔥 Danger Zone
 
 > ENABLE_DANGER_ZONE=1 + DANGER_PASS wajib
 
@@ -227,9 +228,11 @@ D -->|Fail| E(Notify + Logs)
 | Full Clean |
 | Reboot VPS |
 
+⚠ Untuk expert only  
+
 ---
 
-## 🔥 Systemd Reference
+# 🔥 Systemd Cheatsheet
 
 ### Bot
 ```
@@ -245,7 +248,7 @@ systemctl start monitor.service
 
 ---
 
-## 📁 Repo Structure
+# 📁 Repo Structure
 
 ```
 /opt/deklan-node-bot
@@ -263,18 +266,18 @@ systemctl start monitor.service
 
 ---
 
-## ✅ Sample Alerts
+# ✅ Sample Alerts
 
 ✅ UP
 ```
-✅ Gensyn-01 is UP
-CPU 32% • RAM 71% • Disk 62%
-Last round: xxx
+✅ Node UP
+CPU 23% • RAM 68% • Disk 50%
+Round: Join X
 ```
 
 🚨 DOWN
 ```
-🚨 Gensyn-01 DOWN — Restarting…
+🚨 DOWN — Restarting…
 ```
 
 🟢 Recovered
@@ -282,7 +285,7 @@ Last round: xxx
 🟢 Recovered after restart
 ```
 
-🔁 Recovered after reinstall
+🔁 Reinstalled
 ```
 ✅ Recovered after reinstall
 ```
@@ -295,7 +298,7 @@ Last round: xxx
 
 ---
 
-## 🗑 Uninstall
+# 🗑 Uninstall
 
 ```
 systemctl stop bot monitor.service monitor.timer
@@ -308,13 +311,13 @@ systemctl daemon-reload
 
 ---
 
-## 🛣 Roadmap
+# 🛣 Roadmap
 
 - Multi-node support
 - Web dashboard
 - Auto update bot
 - Resource alert
-- Gensyn identity tools
+- Identity manager
 
 ---
 
