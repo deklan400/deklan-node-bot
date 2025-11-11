@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-  Deklan Smart Monitor — v4.0
-  Auto • Detect • Restart • Reinstall • Docker check
+  Deklan Smart Monitor — v4.5
+  Auto-Heal • Reinstall • Health Alert • Safe Clean
   by Deklan × GPT-5
 """
 
@@ -30,8 +30,17 @@ RL_DIR      = E("RL_DIR", "/root/rl_swarm")
 KEY_DIR     = E("KEY_DIR", "/root/deklan")
 
 FLAG_FILE   = "/tmp/.node_status.json"
+HEALTH_FILE = "/tmp/.health_alert"
+
 MAX_LOG   = int(E("LOG_MAX_CHARS", "3500"))
 MONITOR_TRY_REINSTALL = E("MONITOR_TRY_REINSTALL", "1") == "1"
+
+# ===== HEALTH THRESHOLDS =====
+TH_CPU  = int(E("ALERT_CPU",  "85"))
+TH_RAM  = int(E("ALERT_RAM",  "85"))
+TH_DISK = int(E("ALERT_DISK", "85"))
+ALERT_COOLDOWN = int(E("ALERT_COOLDOWN_HOURS", "6"))    # hours
+
 
 # ======================================================
 # SHELL
@@ -102,17 +111,16 @@ def fix_keys():
     sh(f"ln -s {KEY_DIR} {t}")
 
 
-def docker_ok():
-    return "true" in sh("docker info >/dev/null 2>&1; echo $?") or False
-
-
 # ======================================================
-# CHECK STATUS
+# SYSTEMD
 # ======================================================
 def is_up():
     return sh(f"systemctl is-active {SERVICE}") == "active"
 
 
+# ======================================================
+# SYS INFO
+# ======================================================
 def sys_brief():
     try:
         cpu = psutil.cpu_percent(interval=0.6)
@@ -133,6 +141,48 @@ def last_round():
     s = r"journalctl -u %s --no-pager | grep -E 'Joining round:' | tail -n1" % SERVICE
     out = sh(s)
     return out if out else "(no round info)"
+
+
+# ======================================================
+# HEALTH ALERT
+# ======================================================
+def health_need():
+    cpu = psutil.cpu_percent(interval=0.4)
+    ram = psutil.virtual_memory().percent
+    disk = psutil.disk_usage("/").percent
+
+    bad = []
+    if cpu > TH_CPU:
+        bad.append(f"CPU {cpu:.1f}% > {TH_CPU}%")
+    if ram > TH_RAM:
+        bad.append(f"RAM {ram:.1f}% > {TH_RAM}%")
+    if disk > TH_DISK:
+        bad.append(f"Disk {disk:.1f}% > {TH_DISK}%")
+
+    return bad
+
+
+def health_allowed():
+    if not os.path.isfile(HEALTH_FILE):
+        return True
+    t = os.path.getmtime(HEALTH_FILE)
+    diff = time.time() - t
+    return diff > ALERT_COOLDOWN * 3600
+
+
+def health_mark():
+    with open(HEALTH_FILE, "w") as f:
+        f.write("1")
+
+
+# ======================================================
+# SAFE CLEAN
+# ======================================================
+def safe_clean():
+    sh("docker system prune -f >/dev/null 2>&1")
+    sh("journalctl --vacuum-size=200M >/dev/null 2>&1")
+    sh("apt autoremove -y >/dev/null 2>&1 || true")
+    sh("apt clean >/dev/null 2>&1 || true")
 
 
 # ======================================================
@@ -160,24 +210,34 @@ def main():
     flag = flag_load()
     fix_keys()
 
-    # === UP ===
+    # ===== HEALTH CHECK =====
+    bad = health_need()
+    if bad and health_allowed():
+        msg = "\n".join(bad)
+        tg(f"⚠️ *{NODE_NAME}* HIGH USAGE\n{msg}\n{sys_brief()}")
+        health_mark()
+
+    # Light safe clean
+    safe_clean()
+
+    # ===== NODE OK =====
     if is_up():
         if flag["last"] != "up":
             tg(f"✅ *{NODE_NAME}* UP @ {t}\n{sys_brief()}\n{last_round()}")
         flag_set("up", False)
         return
 
-    # === DOWN ===
+    # ===== DOWN =====
     if flag["last"] != "down":
         tg(f"🚨 *{NODE_NAME}* DOWN @ {t}\n↪ restarting…")
 
-    # 1) RESTART
+    # Restart
     if try_restart():
         tg(f"🟢 *{NODE_NAME}* RECOVERED @ {t}\n{sys_brief()}")
         flag_set("up", False)
         return
 
-    # 2) REINSTALL (only once)
+    # Reinstall once
     if MONITOR_TRY_REINSTALL and not flag["once"]:
         tg("⚙ Restart failed → reinstalling…")
         try_reinstall()
@@ -190,7 +250,7 @@ def main():
         else:
             flag_set("down", True)
 
-    # FAILED
+    # ===== FAIL =====
     raw = sh(f"journalctl -u {SERVICE} -n {LOG_LINES} --no-pager")
     logs = clean(raw)[-MAX_LOG:]
 
