@@ -1,11 +1,12 @@
-# ⚡ Deklan Node Bot — Gensyn RL-Swarm Control
+# ⚡ Gensyn RL-Swarm + Deklan Node Bot
+### ✅ One-Command Auto Install • Systemd • Telegram Control • Auto-Heal • Swap Manager
 
 <p align="center">
   <img src="https://i.ibb.co/3zxGBM4/GENSYN-BANNER.png" width="90%">
 </p>
 
 <p align="center">
-  Telegram Control • Auto-Monitor • Auto-Installer • Swap Manager • Danger Zone
+  RL-Swarm Node • Auto Installer • Telegram Control • Auto Monitor • Danger Zone
 </p>
 
 <p align="center">
@@ -18,153 +19,157 @@
 
 ---
 
-## 🧠 Overview
-Deklan Node Bot adalah panel Telegram untuk mengontrol & memonitor node **Gensyn RL-Swarm** tanpa SSH.
+# ✅ Fitur Utama
+## ✅ RL-Swarm Node (CPU)
+✔ One-command installer  
+✔ Auto identity (new user)  
+✔ Auto symlink keys  
+✔ Auto docker build + pull  
+✔ Auto systemd  
+✔ Auto restart  
+✔ Reinstall / Update / Uninstall  
+✔ Easy migrate server  
+✔ Stable & lightweight  
 
-✅ Start / Stop / Restart  
-✅ CPU/RAM/Disk/Uptime  
-✅ Logs → Telegram  
-✅ Show Last Round  
-✅ Auto-Monitor → Auto-Restart → Auto-Reinstall  
-✅ One-Click Remote Installer  
-✅ Multi-Admin  
-✅ Swap Manager (16G/32G/64G/Custom)  
-✅ Danger Zone (Password)  
-✅ Systemd Native  
-✅ Anti-Spam UP/DOWN  
-✅ Modular multi-project  
-
----
-
-## 🚀 Install
-```
-bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh)
-```
-
-Installer:
-- Clone repo → `/opt/deklan-node-bot`
-- Buat `.env` (prompt)
-- Install bot.service
-- Install monitor.timer
-- Start bot
+## ✅ Telegram Bot
+✔ Start / Stop / Restart  
+✔ View Status & Uptime  
+✔ Cek Round  
+✔ View Logs  
+✔ Installer: Install / Reinstall / Update / Uninstall  
+✔ Swap Manager  
+✔ Auto Monitor → Restart → Reinstall  
+✔ Multi-Admin  
+✔ Danger Zone (password)  
+✔ Anti-spam UP/DOWN  
 
 ---
 
-## 🔧 Konfigurasi `.env`
-```
-nano /opt/deklan-node-bot/.env
-```
-
-Minimal:
-```
-BOT_TOKEN=xxxx
-CHAT_ID=1111
-```
-
-Lengkap:
-```
-BOT_TOKEN=
-CHAT_ID=
-ALLOWED_USER_IDS=
-
-SERVICE_NAME=gensyn
-NODE_NAME=deklan-node
-RL_DIR=/root/rl_swarm
-KEY_DIR=/root/deklan
-
-LOG_LINES=80
-ROUND_GREP_PATTERN=Joining round:
-LOG_MAX_CHARS=3500
-MONITOR_TRY_REINSTALL=1
-MONITOR_EVERY_MINUTES=180
-
-AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/
-
-ENABLE_DANGER_ZONE=0
-DANGER_PASS=
-```
-
----
-
-## 📁 Struktur
-```
-/opt/deklan-node-bot
-├── bot.py
-├── monitor.py
-├── requirements.txt
-├── install.sh
-├── bot.service
-├── monitor.service
-├── monitor.timer
-├── .env
-└── .env.example
-```
-
-Node keys:
+# ✅ Folder Struktur
 ```
 /root/deklan/
 │── swarm.pem
 │── userApiKey.json
 └── userData.json
+
+/root/rl-swarm/
+│── docker-compose.yaml
+│── run_node.sh
+│── .env
+│── user/
+│   └── keys → symlink → /root/deklan
+└── ...
+```
+
+Telegram Bot:
+```
+/opt/deklan-node-bot
+├── bot.py
+├── monitor.py
+├── install.sh
+├── bot.service
+├── monitor.service
+├── monitor.timer
+├── requirements.txt
+└── .env
 ```
 
 Symlink:
 ```
-/root/rl_swarm/keys → /root/deklan/
+/root/rl-swarm/keys → /root/deklan
 ```
 
 ---
 
-## 📱 Telegram
-Perintah:
-| Command   | Fungsi |
-|-----------|--------|
-| /start    | Menu |
-| /status   | Resource |
-| /logs     | Last logs |
-| /restart  | Restart node |
-| /round    | Last round |
-| /help     | Help |
+# 🚀 INSTALASI
 
-Menu:
-- 📊 Status
-- 🟢 Start
-- 🔴 Stop
-- 🔁 Restart
-- 📜 Logs
-- ℹ Round
-- 💾 Swap Manager
-- 🧩 Installer
-- ⚠ Danger Zone
+## ✅ 1) Install RL-Swarm
+```
+bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/install.sh)
+```
+
+## ✅ 2) Install Telegram Bot
+```
+bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh)
+```
 
 ---
 
-## 🧩 Installer Menu
-Runtime script:
-- install.sh
-- reinstall.sh
-- update.sh
-- uninstall.sh
+# ✅ Identity Files
+| File | Fungsi |
+|------|--------|
+| swarm.pem | Private key |
+| userApiKey.json | API Auth |
+| userData.json | Metadata |
+
+Lokasi:
+```
+/root/deklan/
+```
+
+---
+
+# ✅ Node Control
+```
+systemctl start gensyn
+systemctl stop gensyn
+systemctl restart gensyn
+systemctl status gensyn --no-pager
+journalctl -u gensyn -f
+```
+
+---
+
+# ✅ Telegram Control
+| Command | Fungsi |
+|---------|--------|
+| /start | Menu |
+| /status | Resource & Round |
+| /logs | Last logs |
+| /restart | Restart node |
+| /round | Last round |
+| /help | Bantuan |
+
+Menu:
+📊 Status  
+🟢 Start  
+🔴 Stop  
+🔁 Restart  
+📜 Logs  
+ℹ Round  
+🧹 Safe Clean  
+💾 Swap Manager  
+🧩 Installer  
+⚠ Danger Zone  
+
+---
+
+# ✅ Installer Menu
+Melalui bot:
+- Install
+- Reinstall
+- Update
+- Uninstall
 
 Flow:
 1) Klik tombol  
 2) Bot konfirmasi  
-3) Balas "YES"  
-4) Bot eksekusi  
+3) Reply “YES”  
+4) Bot jalan script  
 
-Source:
+Base URL:
 ```
 AUTO_INSTALLER_GITHUB
 ```
 
 ---
 
-## 💾 Swap Manager
+# ✅ Swap Manager
 Preset:
 - 16G
 - 32G
 - 64G
-- Custom (input GB)
+- Custom
 
 Automasi:
 - swapoff
@@ -174,74 +179,44 @@ Automasi:
 
 ---
 
-## 🛰 Auto Monitor
-- Cek node  
-- Up → no spam  
-- Down → restart  
-- Restart gagal → reinstall  
-- Reinstall gagal → kirim logs  
-
-```
-systemctl status monitor.timer
-systemctl start monitor.service
-```
+# ✅ Auto Monitor (Self Heal)
+Systemd Timer: `monitor.timer`
 
 Flow:
-```
 Check → Restart → Reinstall → Notify FAIL
-```
 
-State file:
+Jika node DOWN → restart  
+Gagal → reinstall  
+Gagal → kirim log  
+
+Status file:
 ```
 /tmp/.node_status.json
 ```
 
 ---
 
-## ⚠ Danger Zone
-ENABLE_DANGER_ZONE=1 + DANGER_PASS wajib
-
-Fitur:
-- Remove RL-Swarm
-- Clean Docker
-- Remove Swap
-- Full Clean
-- Reboot VPS
-
-Require password via chat ✅
-
----
-
-## 📦 Multi-Project
-Bot terpisah dari installer repo.  
-Bisa dipakai:
-- Project lain
-- RL-Swarm update
-- Layanan lain
-
-Cukup ganti:
+# ✅ Service Files
 ```
-AUTO_INSTALLER_GITHUB
+/etc/systemd/system/gensyn.service
+/etc/systemd/system/bot.service
+/etc/systemd/system/monitor.service
+/etc/systemd/system/monitor.timer
 ```
 
 ---
 
-## 🛠 System
-Check bot:
+# ✅ Manual Uninstall
+Node:
 ```
-systemctl status bot
-journalctl -u bot -f
-```
-
-Check monitor:
-```
-systemctl status monitor.timer
-systemctl start monitor.service
+systemctl stop gensyn
+systemctl disable gensyn
+rm -f /etc/systemd/system/gensyn.service
+rm -rf /root/rl-swarm
+systemctl daemon-reload
 ```
 
----
-
-## 🗑 Uninstall
+Bot:
 ```
 systemctl stop bot monitor.service monitor.timer
 systemctl disable bot monitor.service monitor.timer
@@ -251,25 +226,38 @@ rm -rf /opt/deklan-node-bot
 systemctl daemon-reload
 ```
 
----
-
-## ✅ Screenshot (dummy)
-
-<p align="center">
-  <img src="assets/menu_dark.png" width="420">
-</p>
-
-<p align="center">
-  <img src="assets/logs_dark.png" width="420">
-</p>
-
-<p align="center">
-  <img src="assets/swap_dark.png" width="420">
-</p>
+Identity tetap aman:
+```
+/root/deklan/
+```
 
 ---
 
-## ✅ Next
+# ✅ Troubleshooting
+| Masalah | Solusi |
+|--------|--------|
+| Node mati | systemctl restart gensyn |
+| No logs | journalctl -u gensyn -f |
+| Identity hilang | login WebUI ulang |
+| Repo error | reinstall.sh |
+| Disk full | Safe clean |
+| Docker issue | docker system prune -af |
+| Missing keys | check /root/deklan |
+
+---
+
+# ✅ Backup
+```
+/root/deklan/swarm.pem
+/root/deklan/userApiKey.json
+/root/deklan/userData.json
+```
+
+Jangan share!
+
+---
+
+# ✅ Next Features
 - Multi-node DB
 - Auto update bot
 - Dashboard web
@@ -278,5 +266,5 @@ systemctl daemon-reload
 
 ---
 
-## ❤️ Credits
+# ❤️ Credits
 Built with ❤️ by **Deklan × GPT-5**
