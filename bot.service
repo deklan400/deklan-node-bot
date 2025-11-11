@@ -3,7 +3,6 @@ Description=Deklan Node Bot (Telegram Control)
 After=network-online.target
 Wants=network-online.target
 
-# Auto restart if fail
 StartLimitIntervalSec=60
 StartLimitBurst=15
 
@@ -13,34 +12,40 @@ Type=simple
 User=root
 Group=root
 
-# — Base folder
+# Base folder
 WorkingDirectory=/opt/deklan-node-bot
 
-# — ENV (.env optional)
+# ENV
 EnvironmentFile=-/opt/deklan-node-bot/.env
 
-# — Python smart selection (prioritize venv)
-ExecStart=/bin/bash -c '\
-  if [ -x "/opt/deklan-node-bot/.venv/bin/python" ]; then \
-      exec /opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/bot.py; \
-  else \
-      exec /usr/bin/python3 /opt/deklan-node-bot/bot.py; \
-  fi'
+# Ensure PATH finds venv python + base python
+Environment="PATH=/opt/deklan-node-bot/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Smart Python selector
+ExecStart=/bin/bash -c '
+  PYBIN="/opt/deklan-node-bot/.venv/bin/python";
+  if [ ! -x "$PYBIN" ]; then
+      PYBIN="$(command -v python3)";
+  fi;
+  exec "$PYBIN" /opt/deklan-node-bot/bot.py
+'
+
+ExecReload=/bin/kill -HUP $MAINPID
 
 # Auto restart
 Restart=always
 RestartSec=3
 
-# — Logging
+# Logging
 StandardOutput=journal
 StandardError=journal
 
-# — Limits
+# Limits
 LimitNOFILE=65535
 TimeoutStopSec=25
 KillMode=mixed
 
-# — Safety
+# System hardening
 NoNewPrivileges=yes
 PrivateTmp=true
 ProtectSystem=full
@@ -55,7 +60,7 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 PrivateDevices=yes
 
-# — Python behavior
+# Python behavior
 Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONIOENCODING=UTF-8"
 
