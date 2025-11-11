@@ -143,6 +143,34 @@ def _stats():
 
 
 # ======================================================
+# SAFE CLEAN
+# ======================================================
+def _safe_clean() -> str:
+    before = _shell("df -h / | tail -1 | awk '{print $4}'")
+
+    cmds = [
+        "docker image prune -f",
+        "docker container prune -f",
+        "apt autoremove -y",
+        "apt clean",
+        "journalctl --vacuum-size=200M",
+        "rm -rf /tmp/*"
+    ]
+
+    for c in cmds:
+        _shell(c)
+
+    after = _shell("df -h / | tail -1 | awk '{print $4}'")
+
+    return (
+        "✅ SAFE-CLEAN DONE\n"
+        f"Before: {before}\n"
+        f"After : {after}\n"
+        "(Docker, Logs, APT, /tmp cleaned)\n"
+    )
+
+
+# ======================================================
 # SWAP MANAGER
 # ======================================================
 def _set_swap(size_gb: int) -> str:
@@ -220,10 +248,8 @@ def _main_menu():
         [InlineKeyboardButton("🔁 Restart",   callback_data="restart")],
         [InlineKeyboardButton("📜 Logs",      callback_data="logs")],
         [InlineKeyboardButton("ℹ️ Round",     callback_data="round")],
-
-        # ✅ Swap menu
+        [InlineKeyboardButton("🧹 Safe Clean", callback_data="safe_clean")],
         [InlineKeyboardButton("💾 Swap Manager", callback_data="swap")],
-
         [InlineKeyboardButton("🧩 Installer", callback_data="installer")],
         [InlineKeyboardButton("❓ Help",      callback_data="help")],
     ]
@@ -327,6 +353,11 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await q.edit_message_text("❌ Unauthorized.")
 
     action = q.data
+
+    # SAFE CLEAN
+    if action == "safe_clean":
+        res = _safe_clean()
+        return await _send_long(q, res, "Markdown")
 
     # Installer
     if action == "installer":
