@@ -25,19 +25,18 @@ from telegram.ext import (
 env = os.getenv
 
 BOT_TOKEN = env("BOT_TOKEN", "")
-CHAT_ID = str(env("CHAT_ID", ""))
+CHAT_ID   = str(env("CHAT_ID", ""))
 
 NODE_NAME = env("NODE_NAME", "deklan-node")
 
-SERVICE = env("SERVICE_NAME", "gensyn")
+SERVICE   = env("SERVICE_NAME", "gensyn")
 LOG_LINES = int(env("LOG_LINES", "80"))
 
-RL_DIR = env("RL_DIR", "/root/rl_swarm")
-KEY_DIR = env("KEY_DIR", "/root/deklan")
+RL_DIR    = env("RL_DIR", "/root/rl_swarm")
+KEY_DIR   = env("KEY_DIR", "/root/deklan")
 
 ROUND_GREP = env("ROUND_GREP_PATTERN", "Joining round:")
-
-LOG_MAX = int(env("LOG_MAX_CHARS", "3500"))
+LOG_MAX    = int(env("LOG_MAX_CHARS", "3500"))
 
 MONITOR_TRY_REINSTALL = env("MONITOR_TRY_REINSTALL", "1") == "1"
 
@@ -46,7 +45,7 @@ ALLOWED_USER_IDS = [
 ]
 
 ENABLE_DANGER = env("ENABLE_DANGER_ZONE", "0") == "1"
-DANGER_PASS = env("DANGER_PASS", "")
+DANGER_PASS   = env("DANGER_PASS", "")
 
 AUTO_REPO = env(
     "AUTO_INSTALLER_GITHUB",
@@ -54,7 +53,7 @@ AUTO_REPO = env(
 )
 
 if not BOT_TOKEN or not CHAT_ID:
-    raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — set .env then restart bot")
+    raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — edit .env then restart bot")
 
 
 # ======================================================
@@ -63,7 +62,10 @@ if not BOT_TOKEN or not CHAT_ID:
 def _shell(cmd: str) -> str:
     try:
         return subprocess.check_output(
-            cmd, shell=True, stderr=subprocess.STDOUT, text=True
+            cmd,
+            shell=True,
+            stderr=subprocess.STDOUT,
+            text=True
         ).strip()
     except subprocess.CalledProcessError as e:
         return (e.output or "").strip()
@@ -71,21 +73,27 @@ def _shell(cmd: str) -> str:
 
 def _authorized(update: Update) -> bool:
     uid = str(update.effective_user.id)
+
+    # MUST be from admin chat
     if str(update.effective_chat.id) != CHAT_ID:
         return False
+
+    # If no extra list → only main admin
     if not ALLOWED_USER_IDS:
         return uid == CHAT_ID
+
     return uid == CHAT_ID or uid in ALLOWED_USER_IDS
 
 
 async def _send_long(upd_msg, text: str, parse_mode="Markdown"):
     CHUNK = 3800
+
     if len(text) <= CHUNK:
         if hasattr(upd_msg, "edit_message_text"):
             return await upd_msg.edit_message_text(text, parse_mode=parse_mode)
         return await upd_msg.message.reply_text(text, parse_mode=parse_mode)
 
-    parts = [text[i:i + CHUNK] for i in range(0, len(text), CHUNK)]
+    parts = [text[i:i+CHUNK] for i in range(0, len(text), CHUNK)]
 
     if hasattr(upd_msg, "edit_message_text"):
         await upd_msg.edit_message_text(parts[0], parse_mode=parse_mode)
@@ -127,8 +135,8 @@ def _round():
 def _stats():
     try:
         cpu = psutil.cpu_percent(interval=0.5)
-        vm = psutil.virtual_memory()
-        du = psutil.disk_usage("/")
+        vm  = psutil.virtual_memory()
+        du  = psutil.disk_usage("/")
         uptime_sec = time.time() - psutil.boot_time()
         up = str(timedelta(seconds=int(uptime_sec)))
 
@@ -171,7 +179,7 @@ def _safe_clean() -> str:
 
 
 # ======================================================
-# SWAP MANAGER
+# SWAP
 # ======================================================
 def _set_swap(size_gb: int) -> str:
     try:
@@ -197,7 +205,7 @@ def _set_swap(size_gb: int) -> str:
 
 
 # ======================================================
-# REMOTE SCRIPT EXEC
+# REMOTE INSTALLER
 # ======================================================
 def _run_remote(fname: str) -> str:
     url = f"{AUTO_REPO}{fname}"
@@ -213,6 +221,65 @@ def _run_remote(fname: str) -> str:
         )
     except subprocess.CalledProcessError as e:
         return e.output or "ERR"
+
+
+# ======================================================
+# ULTRA-GLASS PANEL
+# ======================================================
+def _escape_md(t: str) -> str:
+    return t.replace("```", "'''")
+
+def _bar(v: str) -> str:
+    try:
+        val = float("".join(c for c in v if (c.isdigit() or c == ".")))
+        filled = int(round(val / 10))
+        return "◼" * filled + "◻" * (10 - filled)
+    except:
+        return "◻" * 10
+
+def _panel(name: str, service: str, stats: str, rnd: str) -> str:
+    d = {}
+    for ln in stats.splitlines():
+        if ":" in ln:
+            k, v = ln.split(":", 1)
+            d[k.strip()] = v.strip()
+
+    cpu   = d.get("CPU", "0%")
+    ram   = d.get("RAM", "0%")
+    disk  = d.get("Disk", "0%")
+    up    = d.get("Uptime", "--")
+
+    cpu_b  = _bar(cpu)
+    ram_b  = _bar(ram)
+    disk_b = _bar(disk)
+
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    txt = f"""
+```
+████  GENSYN QUANTUM STATUS  ████
+
+ Node       : {name}
+ Service    : {service}
+ Status     : ✅ RUNNING
+ Round      : {rnd}
+ Uptime     : {up}
+
+ ── Resources ───────────────
+ CPU        : {cpu:<8} {cpu_b}
+ RAM        : {ram:<8} {ram_b}
+ Disk       : {disk:<8} {disk_b}
+ Temp       : -- °C
+
+ ── System ─────────────────
+ Identity   : {'✅ Valid' if os.path.isdir(KEY_DIR) else '⚠ Missing'}
+ Docker     : {'✅ OK' if 'docker' in _shell('which docker || echo') else '⚠ N/A'}
+
+ Last Sync  : {ts}
+```
+""".strip("\n")
+
+    return _escape_md(txt)
 
 
 # ======================================================
@@ -272,7 +339,7 @@ def _danger_menu():
 
 
 # ======================================================
-# HANDLERS — COMMANDS
+# COMMAND HANDLERS
 # ======================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
@@ -291,11 +358,11 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "✅ *Commands:*\n"
-        "/start → menu\n"
-        "/status → stats\n"
-        "/logs → last logs\n"
+        "/start   → menu\n"
+        "/status  → stats\n"
+        "/logs    → last logs\n"
         "/restart → restart node\n"
-        "/round → last round info\n",
+        "/round   → last round info\n",
         parse_mode="Markdown"
     )
 
@@ -304,10 +371,12 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
         return await update.message.reply_text("❌ Unauthorized.")
 
-    badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
+    stats = _stats()
+    rnd   = _round()
+    panel = _panel(NODE_NAME, SERVICE, stats, rnd)
 
     await update.message.reply_text(
-        f"📟 *{NODE_NAME}*\nStatus: *{badge}*\n\n{_stats()}",
+        panel,
         parse_mode="Markdown",
         reply_markup=_main_menu(),
     )
@@ -319,7 +388,12 @@ async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logs = _logs(LOG_LINES)
     logs = logs[-LOG_MAX:] if len(logs) > LOG_MAX else logs
-    await _send_long(update, f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```", parse_mode="Markdown")
+
+    await _send_long(
+        update,
+       f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```",
+        parse_mode="Markdown"
+    )
 
 
 async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -335,8 +409,9 @@ async def cmd_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("❌ Unauthorized.")
 
     info = _round()
+
     await update.message.reply_text(
-        f"ℹ️ *Last Round*\n```\n{info}\n```",
+       f"ℹ️ *Last Round*\n```\n{info}\n```",
         parse_mode="Markdown",
         reply_markup=_main_menu(),
     )
@@ -376,7 +451,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # SWAP MENU
+    # SWAP
     if action == "swap":
         return await q.edit_message_text(
             "💾 *Swap Manager*",
@@ -389,17 +464,15 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if size == "custom":
             context.user_data["awaiting_custom_swap"] = True
-            return await q.edit_message_text(
-                "💾 Enter SWAP size in GB (example: 48)"
-            )
+            return await q.edit_message_text("💾 Enter SWAP size GB (ex: 48)")
 
         res = _set_swap(int(size))
         return await _send_long(q, res, "Markdown")
 
-    # Danger Zone
+    # DANGER
     if action == "dz":
         return await q.edit_message_text(
-            "⚠️ *Danger Zone — Password Required*",
+            "⚠️ *Danger Zone — Password Required!*",
             parse_mode="Markdown",
             reply_markup=_danger_menu()
         )
@@ -407,68 +480,80 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action.startswith("dz_"):
         context.user_data["awaiting_password"] = action
         return await q.edit_message_text(
-            f"⚠️ `{action.replace('dz_', '').upper()}` — Enter Password:",
+           f"⚠️ `{action.replace('dz_', '').upper()}` — Enter Password:",
             parse_mode="Markdown"
         )
 
+    # BACK
     if action == "back":
         return await q.edit_message_text(
             "⚡ Main Menu",
             reply_markup=_main_menu()
         )
 
-    # Node ops
+    # STATUS
     if action == "status":
-        badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
+        stats = _stats()
+        rnd   = _round()
+        panel = _panel(NODE_NAME, SERVICE, stats, rnd)
+
         return await q.edit_message_text(
-            f"📟 *{NODE_NAME}*\nStatus: *{badge}*\n\n{_stats()}",
+            panel,
             parse_mode="Markdown",
             reply_markup=_main_menu()
         )
 
+    # START
     if action == "start":
         _start()
         return await q.edit_message_text("🟢 Starting…", reply_markup=_main_menu())
 
+    # STOP
     if action == "stop":
         _stop()
         return await q.edit_message_text("🔴 Stopping…", reply_markup=_main_menu())
 
+    # RESTART
     if action == "restart":
         _restart()
         return await q.edit_message_text("🔁 Restarting…", reply_markup=_main_menu())
 
+    # LOGS
     if action == "logs":
         logs = _logs(LOG_LINES)
         logs = logs[-LOG_MAX:] if len(logs) > LOG_MAX else logs
+
         return await _send_long(
-            q, f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```",
+            q,
+           f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```",
             parse_mode="Markdown"
         )
 
+    # ROUND
     if action == "round":
         info = _round()
         return await q.edit_message_text(
-            f"ℹ️ *Last Round*\n```\n{info}\n```",
+           f"ℹ️ *Last Round*\n```\n{info}\n```",
             parse_mode="Markdown",
             reply_markup=_main_menu(),
         )
 
+    # HELP
     if action == "help":
         return await q.edit_message_text(
             "✅ *Commands:*\n"
-            "/start → menu\n"
+            "/start  → menu\n"
             "/status → stats\n"
-            "/logs → last logs\n"
-            "/restart → restart node\n"
-            "/round → last round info\n",
+            "/logs   → last logs\n"
+            "/restart→ restart node\n"
+            "/round  → last round\n",
             parse_mode="Markdown",
             reply_markup=_main_menu(),
         )
 
 
 # ======================================================
-# TEXT HANDLER (INSTALL + DANGER + CUSTOM SWAP)
+# TEXT HANDLER
 # ======================================================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -495,7 +580,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(result) > LOG_MAX:
             result = result[-LOG_MAX:]
 
-        return await _send_long(update, f"✅ Done\n```\n{result}\n```", parse_mode="Markdown")
+        return await _send_long(
+            update,
+           f"✅ Done\n```\n{result}\n```",
+            parse_mode="Markdown"
+        )
 
     # Custom swap
     if "awaiting_custom_swap" in context.user_data:
@@ -509,14 +598,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return await update.message.reply_text(res)
 
-    # Danger Zone
+    # Danger password
     if "awaiting_password" in context.user_data:
         action = context.user_data.pop("awaiting_password")
 
         if text != DANGER_PASS:
             return await update.message.reply_text("❌ Wrong password")
 
-        await update.message.reply_text("✅ Verified! Running...")
+        await update.message.reply_text("✅ Verified! Running…")
 
         if action == "dz_rm_node":
             _shell(
@@ -549,7 +638,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             res = "Unknown action"
 
-        return await _send_long(update, f"✅ Done\n```\n{res}\n```", parse_mode="Markdown")
+        return await _send_long(
+            update,
+           f"✅ Done\n```\n{res}\n```",
+            parse_mode="Markdown"
+        )
 
     return
 
@@ -560,6 +653,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Commands
     app.add_handler(CommandHandler("start",    start))
     app.add_handler(CommandHandler("help",     cmd_help))
     app.add_handler(CommandHandler("status",   cmd_status))
@@ -567,6 +661,7 @@ def main():
     app.add_handler(CommandHandler("restart",  cmd_restart))
     app.add_handler(CommandHandler("round",    cmd_round))
 
+    # Buttons + text
     app.add_handler(CallbackQueryHandler(handle_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
