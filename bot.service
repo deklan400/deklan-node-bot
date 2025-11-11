@@ -19,11 +19,7 @@ Environment="PATH=/opt/deklan-node-bot/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONIOENCODING=UTF-8"
 
-ExecStart=/bin/bash -c '
-  PYBIN="/opt/deklan-node-bot/.venv/bin/python"
-  [ -x "$PYBIN" ] || PYBIN="$(command -v python3)"
-  exec "$PYBIN" /opt/deklan-node-bot/bot.py
-'
+ExecStart=/opt/deklan-node-bot/.venv/bin/python /opt/deklan-node-bot/bot.py
 
 Restart=always
 RestartSec=3
