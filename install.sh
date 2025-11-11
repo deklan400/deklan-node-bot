@@ -160,7 +160,6 @@ else
 fi
 
 
-
 ###################################################################
 # 6) Install bot.service
 ###################################################################
@@ -186,11 +185,11 @@ EnvironmentFile=-$BOT_DIR/.env
 Environment="PATH=$BOT_DIR/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 
 ExecStart=/bin/bash -c '
-  PYBIN="$BOT_DIR/.venv/bin/python";
+  PYBIN="'"$BOT_DIR"'/.venv/bin/python";
   if [ ! -x "$PYBIN" ]; then
       PYBIN="$(command -v python3)";
   fi;
-  exec "\$PYBIN" $BOT_DIR/bot.py
+  exec "$PYBIN" "'"$BOT_DIR"'/bot.py"
 '
 
 ExecReload=/bin/kill -HUP \$MAINPID
@@ -227,6 +226,8 @@ EOF
 systemctl daemon-reload
 systemctl enable --now bot
 msg "bot.service installed ✅"
+
+
 
 
 
