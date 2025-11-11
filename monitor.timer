@@ -7,19 +7,14 @@ Wants=network-online.target
 # Delay after boot
 OnBootSec=2m
 
-# Main interval
-# NOTE:
-#   - Install/reinstall.sh akan rewrite otomatis
-#   - Jika gagal load → fallback 3h
+# Default 3h
 OnUnitActiveSec=3h
 
-# Avoid simultaneous execution if many nodes
+# Random spread (avoid many nodes hitting at same time)
 RandomizedDelaySec=45
 
-# Preserve schedule across reboots
 Persistent=true
 
-# Target unit
 Unit=monitor.service
 
 [Install]
