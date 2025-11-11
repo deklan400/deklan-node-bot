@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ###################################################################
-#   DEKLAN NODE BOT INSTALLER — v3.5 SMART
+#   DEKLAN NODE BOT INSTALLER — v3.6 SMART-PROMPT
 #   Telegram control + Auto-monitor for RL-Swarm
 #   Auto-install RL-Swarm keys & systemd
 ###################################################################
@@ -18,15 +18,15 @@ msg()  { echo -e "${GREEN}✅ $1${NC}"; }
 warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
 err()  { echo -e "${RED}❌ $1${NC}"; }
 
-
 banner() {
   echo -e "
 ${CYAN}===========================================
- ⚡ INSTALLING DEKLAN NODE BOT (v3.5)
+ ⚡ INSTALLING DEKLAN NODE BOT (v3.6)
 ===========================================${NC}
 "
 }
 banner
+
 
 # ===== PATHS =====
 BOT_DIR="/opt/deklan-node-bot"
@@ -84,24 +84,60 @@ pip install -r requirements.txt >/dev/null
 msg "Python requirements OK ✅"
 
 
-###################################################################
-# 4) ENV
-###################################################################
-msg "[4/7] Preparing ENV (.env)…"
 
-if [[ ! -f ".env" ]]; then
-  cp .env.example .env
-  warn "⚠ Set BOT_TOKEN + CHAT_ID inside .env"
+###################################################################
+# 4) ENV (AUTO PROMPT)
+###################################################################
+msg "[4/7] Creating .env (interactive)…"
+
+echo ""
+read -rp "🔑 Enter BOT TOKEN: " BOT_TOKEN
+read -rp "👤 Enter Main Admin CHAT ID: " CHAT_ID
+read -rp "➕ Extra allowed users? (comma separated) [optional]: " ALLOWED
+read -rp "⚠ Enable Danger Zone? (y/N): " ENABLE_DZ
+
+if [[ "$ENABLE_DZ" == "y" || "$ENABLE_DZ" == "Y" ]]; then
+  read -rp "🔐 Set Danger Password: " DANGER_PASS
+  ENABLE_DZ="1"
+else
+  DANGER_PASS=""
+  ENABLE_DZ="0"
 fi
 
-grep -q '^SERVICE_NAME=' .env      || echo "SERVICE_NAME=gensyn" >> .env
-grep -q '^AUTO_INSTALLER_GITHUB=' .env \
-  || echo "AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/" >> .env
-grep -q '^RL_DIR=' .env || echo "RL_DIR=${RL_DIR}" >> .env
-grep -q '^KEY_DIR=' .env || echo "KEY_DIR=${KEY_DIR}" >> .env
+cat > .env <<EOF
+BOT_TOKEN=$BOT_TOKEN
+CHAT_ID=$CHAT_ID
+ALLOWED_USER_IDS=$ALLOWED
+
+# Node
+SERVICE_NAME=gensyn
+NODE_NAME=deklan-node
+
+# Logs
+LOG_LINES=80
+MONITOR_EVERY_MINUTES=180
+ROUND_GREP_PATTERN=Joining round:
+LOG_MAX_CHARS=3500
+
+# Danger
+ENABLE_DANGER_ZONE=$ENABLE_DZ
+DANGER_PASS=$DANGER_PASS
+
+# Auto installer base
+AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/
+
+# RL-Swarm folders
+RL_DIR=$RL_DIR
+KEY_DIR=$KEY_DIR
+
+# Smart options
+FORCE_GIT_PULL=1
+DOCKER_REBUILD=1
+MONITOR_TRY_REINSTALL=1
+EOF
 
 chmod 600 .env
-msg ".env OK ✅"
+msg ".env generated ✅"
 
 
 ###################################################################
@@ -121,8 +157,9 @@ if [[ -d "$RL_DIR" ]]; then
     msg "keys → OK ✅"
   fi
 else
-  warn "RL-Swarm NOT found — skipping"
+  warn "RL-Swarm NOT found — skipping symlink"
 fi
+
 
 
 ###################################################################
@@ -154,7 +191,7 @@ ExecStart=/bin/bash -c '
   if [ ! -x "$PYBIN" ]; then
       PYBIN="$(command -v python3)";
   fi;
-  exec "$PYBIN" $BOT_DIR/bot.py
+  exec "\$PYBIN" $BOT_DIR/bot.py
 '
 
 ExecReload=/bin/kill -HUP \$MAINPID
@@ -194,8 +231,9 @@ systemctl enable --now bot
 msg "bot.service installed ✅"
 
 
+
 ###################################################################
-# 7) Monitor.timer + service
+# 7) Install monitor.service + timer
 ###################################################################
 msg "[7/7] Installing monitor.service + timer…"
 
@@ -260,9 +298,12 @@ systemctl enable --now monitor.timer
 msg "monitor.timer installed ✅"
 
 
+
 ###################################################################
 # DONE
 ###################################################################
+systemctl restart bot
+
 echo -e "
 ${GREEN}✅ BOT INSTALL COMPLETE
 -------------------------------------
