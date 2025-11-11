@@ -1,233 +1,229 @@
 <START>
 
-<!-- HEADER -->
+<!-- BANNER -->
 <p align="center">
-  <img src="https://i.ibb.co/3zxGBM4/GENSYN-BANNER.png" width="90%" />
+  <img src="https://placehold.co/1200x350/000000/11ff11?text=DEKLAN+NODE+BOT" />
 </p>
 
-<h1 align="center">⚡ Deklan Node Bot — v3.6</h1>
-
+<h1 align="center">🖤 Deklan Node Bot v2.4</h1>
 <p align="center">
-  <b>Telegram Control Panel + Auto-Monitor + Swap Manager + One-Click Installer</b>
+  Telegram Control Panel + Auto-Monitor + One-Click Installer<br>
+  for Gensyn RL-Swarm Nodes
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Gensyn-Testnet-black?style=for-the-badge&logo=protocols" />
-  <img src="https://img.shields.io/badge/Telegram-Bot-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" />
-  <img src="https://img.shields.io/badge/Auto--Install-YES-orange?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Systemd-Supported-yellow?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Linux-Ubuntu%2020.04%20|%2022.04-purple?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Gensyn-Testnet-blue?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Telegram-Bot-green?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Auto--Install-YES-orange?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Systemd-Supported-yellow?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Linux-Ubuntu%2022.04-purple?style=for-the-badge">
 </p>
 
 ---
 
-# 🧠 Overview
+## 🧠 Overview
 
-**Deklan Node Bot** = Telegram bot untuk mengontrol & monitoring  
-**Gensyn RL-Swarm Node TANPA SSH**
+**Deklan Node Bot** → Telegram Bot untuk mengontrol & monitoring  
+**Gensyn RL-Swarm Node tanpa SSH!**
 
 ✅ Start / Stop / Restart  
+✅ CPU / RAM / Disk / Uptime  
 ✅ Logs → Telegram  
 ✅ Latest Round  
-✅ CPU / RAM / Disk / Uptime  
-✅ Auto Monitor + Auto Restart  
-✅ Auto Reinstall  
-✅ Swap Manager  
+✅ Auto-Monitor + Auto-Restart  
+✅ Auto-Reinstall  
 ✅ One-Click Installer  
 ✅ Danger Zone (Password)  
 ✅ Multi Admin  
-✅ Anti-Spam (status cache)  
+✅ Remote Auto-Installer  
+✅ Anti-Spam Alert  
 
-> Semua cukup dari Telegram ‼ 📱
-
----
-
-# 🖼️ Screenshots (Dark Mode)
-
-### 🏁 Main Menu
-<p align="center">
-  <img src="https://i.imgur.com/7hTJiJZ.png" width="55%"/>
-</p>
+> Semua kontrol via Telegram — HP aja cukup 📱
 
 ---
 
-### 📊 Status Example
-<p align="center">
-  <img src="https://i.imgur.com/W1slOQw.png" width="55%"/>
-</p>
+## ⚡ Features
 
----
-
-### 📜 Logs Example
-<p align="center">
-  <img src="https://i.imgur.com/lyVXd8I.png" width="55%"/>
-</p>
-
----
-
-### 💾 Swap Manager
-<p align="center">
-  <img src="https://i.imgur.com/a3XCH5Z.png" width="55%"/>
-</p>
-
-> Kalau kamu ada real screenshot → tinggal ganti url-nya.
-
----
-
-# ⚡ Features
-
-- Interactive Telegram panel
+- Telegram menu
+- Systemd integration
 - Log viewer (journalctl)
-- CPU / RAM / Disk / Round monitor
-- Auto restart
-- Auto reinstall
-- Swap manager
+- CPU / RAM / Disk Monitor
+- Round detection
+- Auto-monitor
+- Auto-restart
+- Auto-reinstall
+- UP/DOWN notification
+- Anti-Spam (no alert repeat)
+- Remote installer script
 - Multi admin
-- No spam UP/DOWN
-- Danger zone (secured)
-- Remote installer
-- Smart key auto-link
+- Danger Zone (secure)
 
 ---
 
-# 🚀 Quick Install
+## 🚀 Quick Install
 
-Jalankan di VPS Ubuntu:
+> Jalankan di VPS Ubuntu
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/deklan400/deklan-node-bot/main/install.sh)
 ```
 
-Installer otomatis:
+Installer akan:
 ✅ Install dependencies  
 ✅ Clone repo  
-✅ Setup venv  
-✅ Prompt BOT_TOKEN / CHAT_ID  
-✅ Generate .env  
+✅ Setup virtualenv  
+✅ Generate `.env` via prompt  
 ✅ Install + start bot.service  
 ✅ Install + start monitor.timer  
 
-> 0 config manual ✅
+---
+
+## ✅ Example — Telegram Menu
+
+<p align="center">
+  <img src="https://placehold.co/600x750/000000/11ff11?text=Main+Menu" width="45%"/>
+</p>
 
 ---
 
-# ⚙️ ENV (.env)
+## 📜 Logs Example
 
-Installer akan generate otomatis via prompt.
+<p align="center">
+  <img src="https://placehold.co/600x400/0f0f0f/00ffbb?text=Logs+Output" width="65%"/>
+</p>
 
-Lokasi file:
-```
-/opt/deklan-node-bot/.env
+---
+
+## 💾 Swap Manager
+
+<p align="center">
+  <img src="https://placehold.co/600x400/0f0f0f/00ccff?text=Swap+Manager" width="65%"/>
+</p>
+
+---
+
+## ⚙️ Konfigurasi `.env`
+
+```bash
+nano /opt/deklan-node-bot/.env
 ```
 
-Minimal isi:
+Minimal:
+
 ```
-BOT_TOKEN=xxxxx
-CHAT_ID=111111
+BOT_TOKEN=YOUR_TOKEN
+CHAT_ID=123456
+```
+
+Opsional:
+
+```
+ALLOWED_USER_IDS=12345,98765
+SERVICE_NAME=gensyn
+NODE_NAME=Gensyn-VPS
+LOG_LINES=80
+MONITOR_EVERY_MINUTES=180
+ENABLE_DANGER_ZONE=1
+DANGER_PASS=12345
+AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/
 ```
 
 ---
 
-# 🧩 ENV Table
+### 🧩 ENV Table
 
 | Key | Wajib | Fungsi |
-|------|-------|------|
-| BOT_TOKEN | ✅ | Token bot |
-| CHAT_ID | ✅ | Admin utama |
-| ALLOWED_USER_IDS | ❌ | Extra admin |
-| SERVICE_NAME | ❌ | Target service |
-| NODE_NAME | ❌ | Nama VPS |
-| RL_DIR | ✅ | Base RL |
-| KEY_DIR | ✅ | Identity |
-| LOG_LINES | ❌ | Log row |
-| LOG_MAX_CHARS | ❌ | Limit Tg |
-| MONITOR_EVERY_MINUTES | ❌ | Interval |
-| ENABLE_DANGER_ZONE | ❌ | Aktifkan menu danger |
-| DANGER_PASS | ❌ | Password menu danger |
-| AUTO_INSTALLER_GITHUB | ✅ | Remote source |
+|------|-------|--------|
+| BOT_TOKEN | ✅ | Token bot Telegram |
+| CHAT_ID | ✅ | Admin |
+| ALLOWED_USER_IDS | ❌ | Extra admins |
+| SERVICE_NAME | ❌ | Target systemd service |
+| NODE_NAME | ❌ | Label VPS |
+| LOG_LINES | ❌ | Baris log |
+| MONITOR_EVERY_MINUTES | ❌ | Interval monitor |
+| ENABLE_DANGER_ZONE | ❌ | Mode bahaya |
+| DANGER_PASS | ❌ | Password Danger |
+| AUTO_INSTALLER_GITHUB | ✅ | Source auto installer |
 
 ---
 
-# 🤖 Telegram Commands
+## 📡 Telegram Commands
 
 | Command | Fungsi |
 |--------|--------|
 | /start | Menu |
-| /status | VPS stats |
+| /status | Info resource |
 | /logs | Show logs |
 | /restart | Restart node |
-| /round | Show last round |
-| /help | Help |
+| /round | Last round |
+| /help | Bantuan |
 
 ---
 
-# 🧩 Telegram Menu
+## 🧩 Menu Detail
 
 | Button | Fungsi |
 |--------|--------|
-| 📊 Status | Info node |
-| 🟢 Start | Start |
-| 🔴 Stop | Stop |
+| 📊 Status | Info VPS |
+| 🟢 Start | Start node |
+| 🔴 Stop | Stop node |
 | 🔁 Restart | Restart |
 | 📜 Logs | Lihat logs |
-| ℹ️ Round | Info round |
-| 💾 Swap Manager | Set 16/32/64/custom |
-| 🧩 Installer | Install/update |
-| ⚠ Danger Zone | Advanced |
+| ℹ️ Round | Last round |
+| 💾 Swap Manager | Manage SWAP |
+| 🧩 Installer | Menu installer |
+| ⚠ Danger Zone | Tools Bahaya |
 
 ---
 
-# 💾 Swap Manager
+## 💾 Swap Manager
 
-Menu:
-- 16G
-- 32G
-- 64G
-- Custom
+✅ 16GB  
+✅ 32GB  
+✅ 64GB  
+✅ Custom input  
+✅ Auto update `/etc/fstab`
 
-Example custom:
-```
-48 → swap = 48GB
-```
+> No reboot needed ✅
 
 ---
 
-# 🔧 Installer Menu
+## 🔧 Installer Menu
 
-Script akan fetch dari:
+Remote installer:
+
 ```
 AUTO_INSTALLER_GITHUB
 ```
 
-Mode:
+Fitur:
 - Install
-- Update
 - Reinstall
+- Update
 - Uninstall
 
 Flow:
 1) Klik tombol  
-2) Bot minta confirm  
-3) Balas `YES` ✅  
+2) Bot konfirmasi → YES  
+3) Bot eksekusi script  
 
 ---
 
-# 🛰 Auto Monitor
+## 🛰 Auto Monitor
 
-Systemd timer → check:
-- Node alive?
-- Restart if down
-- Reinstall if restart failed
-- Notify + Log on final fail
+Systemd timer akan:
+✅ Cek status node  
+✅ Auto-restart  
+✅ Jika gagal → auto-reinstall  
+✅ Jika masih fail → kirim logs  
 
-Check:
 ```
 systemctl status monitor.timer
 ```
 
 ---
 
-# 🔁 Auto-Recovery Logic
+### 🔁 Auto-Recovery Logic
 
 ```mermaid
 flowchart TD
@@ -241,7 +237,7 @@ D -->|Fail| E(Notify + Logs)
 
 ---
 
-# ⚠ Danger Zone
+## 🔥 Danger Zone
 
 > ENABLE_DANGER_ZONE=1 + DANGER_PASS wajib
 
@@ -249,15 +245,13 @@ D -->|Fail| E(Notify + Logs)
 |--------|
 | Remove RL-Swarm |
 | Clean Docker |
-| Delete Swap |
+| Remove Swap |
 | Full Clean |
 | Reboot VPS |
 
-⚠ Expert only
-
 ---
 
-# 🔥 Systemd Cheatsheet
+## 🔥 Systemd Reference
 
 ### Bot
 ```
@@ -273,7 +267,7 @@ systemctl start monitor.service
 
 ---
 
-# 📁 Repo Structure
+## 📁 Folder Structure
 
 ```
 /opt/deklan-node-bot
@@ -286,44 +280,44 @@ systemctl start monitor.service
 ├── monitor.timer
 ├── .env
 ├── .env.example
-└── /tmp/.node_status.json
+└── /tmp/.node_status.json   ← auto
 ```
 
 ---
 
-# ✅ Sample Alerts
+## ✅ Sample Alerts
 
 ✅ UP
 ```
 ✅ Node UP
-CPU 23% • RAM 68% • Disk 50%
+CPU 32% • RAM 71% • Disk 62%
 Round: Join X
 ```
 
 🚨 DOWN
 ```
-🚨 DOWN — Restarting…
+🚨 Node DOWN — Restarting…
 ```
 
-🟢 After Restart
+🟢 RECOVER
 ```
-🟢 Recovered!
-```
-
-🔁 After Reinstall
-```
-✅ Recovered after reinstall
+🟢 Recovered after restart
 ```
 
-❌ FAILED
+✅ REINSTALLED
 ```
-❌ FAILED — manual fix needed
+✅ Fix via reinstall OK
+```
+
+❌ FAIL
+```
+❌ Failed — needs manual fix
 <logs>
 ```
 
 ---
 
-# 🗑 Uninstall
+## 🗑 Uninstall
 
 ```
 systemctl stop bot monitor.service monitor.timer
@@ -336,16 +330,17 @@ systemctl daemon-reload
 
 ---
 
-# 🛣 Roadmap
+## 🛣 Roadmap
 
 - Multi-node support
-- WebUI dashboard
+- Web dashboard
 - Auto update bot
 - Resource alert
-- Identity tools
+- Identity helper tools
 
 ---
 
-<h3 align="center">Built with ❤️ by <b>Deklan × GPT-5</b></h3>
+## ❤️ Credits
+Built with ❤️ by **Deklan × GPT-5**
 
 <END>
