@@ -77,6 +77,24 @@ def _authorized(update: Update) -> bool:
     return uid == CHAT_ID or uid in ALLOWED_USER_IDS
 
 
+async def _send_long(update_or_query, text: str, parse_mode="Markdown"):
+    CHUNK = 3800
+    if len(text) <= CHUNK:
+        if hasattr(update_or_query, "edit_message_text"):
+            return await update_or_query.edit_message_text(text, parse_mode=parse_mode)
+        return await update_or_query.message.reply_text(text, parse_mode=parse_mode)
+
+    parts = [text[i:i + CHUNK] for i in range(0, len(text), CHUNK)]
+
+    if hasattr(update_or_query, "edit_message_text"):
+        await update_or_query.edit_message_text(parts[0], parse_mode=parse_mode)
+    else:
+        await update_or_query.message.reply_text(parts[0], parse_mode=parse_mode)
+
+    for p in parts[1:]:
+        await update_or_query.message.reply_text(p, parse_mode=parse_mode)
+
+
 # ======================================================
 # SYSTEMD OPS
 # ======================================================
@@ -215,6 +233,51 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _authorized(update):
+        return await update.message.reply_text("❌ Unauthorized.")
+
+    badge = "✅ RUNNING" if _service_active() else "⛔ STOPPED"
+
+    await update.message.reply_text(
+        f"📟 *{NODE_NAME}*\nStatus: *{badge}*\n\n{_stats()}",
+        parse_mode="Markdown",
+        reply_markup=_main_menu(),
+    )
+
+
+async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _authorized(update):
+        return await update.message.reply_text("❌ Unauthorized.")
+
+    logs = _logs(LOG_LINES)
+    logs = logs[-LOG_MAX:] if len(logs) > LOG_MAX else logs
+    await _send_long(update, f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```", parse_mode="Markdown")
+
+
+async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _authorized(update):
+        return await update.message.reply_text("❌ Unauthorized.")
+
+    _restart()
+    await update.message.reply_text("🔁 Restarting…", reply_markup=_main_menu())
+
+
+async def cmd_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _authorized(update):
+        return await update.message.reply_text("❌ Unauthorized.")
+
+    info = _round()
+    await update.message.reply_text(
+        f"ℹ️ *Last Round*\n```\n{info}\n```",
+        parse_mode="Markdown",
+        reply_markup=_main_menu(),
+    )
+
+
+# ======================================================
+# BUTTON HANDLER
+# ======================================================
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -231,6 +294,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=_installer_menu()
         )
 
+    # INSTALL FLOW
     if action.startswith("inst_"):
         mode = action.split("_")[1]
         context.user_data["pending_inst"] = mode
@@ -239,11 +303,20 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+    # Danger Zone main
     if action == "dz":
         return await q.edit_message_text(
             "⚠️ *Danger Zone — Password Required*",
             parse_mode="Markdown",
             reply_markup=_danger_menu()
+        )
+
+    # Danger Zone password
+    if action.startswith("dz_"):
+        context.user_data["awaiting_password"] = action
+        return await q.edit_message_text(
+            f"⚠️ `{action.replace('dz_', '').upper()}` — Enter Password:",
+            parse_mode="Markdown"
         )
 
     if action == "back":
@@ -276,10 +349,9 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == "logs":
         logs = _logs(LOG_LINES)
         logs = logs[-LOG_MAX:] if len(logs) > LOG_MAX else logs
-        return await q.edit_message_text(
-            f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```",
-            parse_mode="Markdown",
-            reply_markup=_main_menu(),
+        return await _send_long(
+            q, f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```",
+            parse_mode="Markdown"
         )
 
     if action == "round":
@@ -304,7 +376,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ======================================================
-# TEXT
+# TEXT (for Installer & Danger validation)
 # ======================================================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -331,41 +403,40 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(result) > LOG_MAX:
             result = result[-LOG_MAX:]
 
-        return await update.message.reply_text(
-            f"✅ Done\n```\n{result}\n```",
-            parse_mode="Markdown"
-        )
+        return await _send_long(update, f"✅ Done\n```\n{result}\n```", parse_mode="Markdown")
 
     # Danger Zone
-    if "awaiting_password" not in context.user_data:
-        return
+    if "awaiting_password" in context.user_data:
+        action = context.user_data.pop("awaiting_password")
 
-    action = context.user_data.pop("awaiting_password")
+        if text != DANGER_PASS:
+            return await update.message.reply_text("❌ Wrong password")
 
-    if text != DANGER_PASS:
-        return await update.message.reply_text("❌ Wrong password")
+        await update.message.reply_text("✅ Verified! Running...")
 
-    await update.message.reply_text("✅ Verified! Running...")
+        if action == "dz_rm_node":
+            _shell(f"systemctl stop {SERVICE}; systemctl disable {SERVICE}; rm -f /etc/systemd/system/{SERVICE}.service; systemctl daemon-reload; rm -rf {RL_DIR}")
+            res = "Node removed"
 
-    if action == "dz_rm_node":
-        _shell(f"systemctl stop {SERVICE}; systemctl disable {SERVICE}; rm -f /etc/systemd/system/{SERVICE}.service; systemctl daemon-reload; rm -rf {RL_DIR}")
-        res = "Node removed"
-    elif action == "dz_rm_docker":
-        res = _shell("docker ps -aq | xargs -r docker rm -f; docker system prune -af")
-    elif action == "dz_rm_swap":
-        res = _shell("swapoff -a; rm -f /swapfile; sed -i '/swapfile/d' /etc/fstab")
-    elif action == "dz_clean_all":
-        res = _shell(f"systemctl stop {SERVICE}; rm -rf {RL_DIR}; docker system prune -af; swapoff -a; rm -f /swapfile")
-    elif action == "dz_reboot":
-        _shell("reboot")
-        res = "Rebooting…"
-    else:
-        res = "Unknown action"
+        elif action == "dz_rm_docker":
+            res = _shell("docker ps -aq | xargs -r docker rm -f; docker system prune -af")
 
-    return await update.message.reply_text(
-        f"✅ Done\n```\n{res}\n```",
-        parse_mode="Markdown"
-    )
+        elif action == "dz_rm_swap":
+            res = _shell("swapoff -a; rm -f /swapfile; sed -i '/swapfile/d' /etc/fstab")
+
+        elif action == "dz_clean_all":
+            res = _shell(f"systemctl stop {SERVICE}; rm -rf {RL_DIR}; docker system prune -af; swapoff -a; rm -f /swapfile")
+
+        elif action == "dz_reboot":
+            _shell("reboot")
+            res = "Rebooting…"
+
+        else:
+            res = "Unknown action"
+
+        return await _send_long(update, f"✅ Done\n```\n{res}\n```", parse_mode="Markdown")
+
+    return
 
 
 # ======================================================
@@ -374,8 +445,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("start",    start))
+    app.add_handler(CommandHandler("help",     cmd_help))
+    app.add_handler(CommandHandler("status",   cmd_status))
+    app.add_handler(CommandHandler("logs",     cmd_logs))
+    app.add_handler(CommandHandler("restart",  cmd_restart))
+    app.add_handler(CommandHandler("round",    cmd_round))
+
     app.add_handler(CallbackQueryHandler(handle_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
