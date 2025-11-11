@@ -4,7 +4,6 @@ set -euo pipefail
 ###################################################################
 #   DEKLAN NODE BOT INSTALLER — v3.6 SMART-PROMPT
 #   Telegram control + Auto-monitor for RL-Swarm
-#   Auto-install RL-Swarm keys & systemd
 ###################################################################
 
 # ===== COLORS =====
@@ -32,7 +31,8 @@ banner
 BOT_DIR="/opt/deklan-node-bot"
 REPO="https://github.com/deklan400/deklan-node-bot"
 
-RL_DIR="/root/rl_swarm"
+# ✅ FINAL & FIXED
+RL_DIR="/root/rl-swarm"
 KEY_DIR="/root/deklan"
 
 SERVICE_NAME="bot"
@@ -76,9 +76,7 @@ if [[ ! -d ".venv" ]]; then
   msg "Virtualenv created ✅"
 fi
 
-# shellcheck disable=SC1091
 source .venv/bin/activate
-
 pip install --upgrade pip >/dev/null
 pip install -r requirements.txt >/dev/null
 msg "Python requirements OK ✅"
@@ -140,8 +138,9 @@ chmod 600 .env
 msg ".env generated ✅"
 
 
+
 ###################################################################
-# 5) RL-Swarm keys link
+# 5) RL-Swarm keys symlink
 ###################################################################
 msg "[5/7] Checking RL-Swarm folder…"
 
@@ -169,7 +168,7 @@ msg "[6/7] Installing bot.service…"
 
 cat >/etc/systemd/system/bot.service <<EOF
 [Unit]
-Description=Deklan Node Bot (Telegram)
+Description=Deklan Node Bot (Telegram Control)
 After=network-online.target
 Wants=network-online.target
 
@@ -206,7 +205,6 @@ LimitNOFILE=65535
 TimeoutStopSec=25
 KillMode=mixed
 
-# Security
 NoNewPrivileges=yes
 PrivateTmp=true
 ProtectSystem=full
