@@ -165,9 +165,9 @@ Fitur:
 - Uninstall
 
 Flow:
-1) Klik tombol
-2) Bot konfirmasi
-3) Ketik `YES`
+1) Klik tombol  
+2) Bot konfirmasi  
+3) Ketik `YES`  
 
 ---
 
@@ -192,8 +192,8 @@ Supports:
 Systemd timer akan:
 - Cek status node
 - Auto-restart
-- Kalau gagal → auto-reinstall
-- Kalau gagal → kirim logs
+- Jika gagal → auto-reinstall
+- Jika tetap gagal → kirim logs
 
 ```
 systemctl status monitor.timer
@@ -202,11 +202,6 @@ systemctl status monitor.timer
 ---
 
 ### 🔁 Auto-Recovery Logic
-
-1) Cek service  
-2) Restart  
-3) Kalau masih DOWN → reinstall  
-4) Kalau masih DOWN → notif + logs  
 
 ```mermaid
 flowchart TD
