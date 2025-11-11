@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ###################################################################
-#   DEKLAN NODE BOT INSTALLER — v3 (PUBLIC)
+#   DEKLAN NODE BOT INSTALLER — v3.5 SMART
 #   Telegram control + Auto-monitor for RL-Swarm
 #   Auto-install RL-Swarm keys & systemd
 ###################################################################
@@ -18,10 +18,11 @@ msg()  { echo -e "${GREEN}✅ $1${NC}"; }
 warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
 err()  { echo -e "${RED}❌ $1${NC}"; }
 
+
 banner() {
   echo -e "
 ${CYAN}===========================================
- ⚡ INSTALLING DEKLAN NODE BOT (v3)
+ ⚡ INSTALLING DEKLAN NODE BOT (v3.5)
 ===========================================${NC}
 "
 }
@@ -64,7 +65,6 @@ else
 fi
 
 
-
 ###################################################################
 # 3) Python venv
 ###################################################################
@@ -76,11 +76,12 @@ if [[ ! -d ".venv" ]]; then
   msg "Virtualenv created ✅"
 fi
 
+# shellcheck disable=SC1091
 source .venv/bin/activate
+
 pip install --upgrade pip >/dev/null
 pip install -r requirements.txt >/dev/null
-msg "Python installed ✅"
-
+msg "Python requirements OK ✅"
 
 
 ###################################################################
@@ -93,7 +94,6 @@ if [[ ! -f ".env" ]]; then
   warn "⚠ Set BOT_TOKEN + CHAT_ID inside .env"
 fi
 
-# ensure defaults exist:
 grep -q '^SERVICE_NAME=' .env      || echo "SERVICE_NAME=gensyn" >> .env
 grep -q '^AUTO_INSTALLER_GITHUB=' .env \
   || echo "AUTO_INSTALLER_GITHUB=https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/" >> .env
@@ -102,7 +102,6 @@ grep -q '^KEY_DIR=' .env || echo "KEY_DIR=${KEY_DIR}" >> .env
 
 chmod 600 .env
 msg ".env OK ✅"
-
 
 
 ###################################################################
@@ -118,23 +117,25 @@ if [[ -d "$RL_DIR" ]]; then
     rm -rf "$RL_DIR/keys" >/dev/null 2>&1 || true
     ln -s "$KEY_DIR" "$RL_DIR/keys"
     msg "keys → symlinked ✅"
+  else
+    msg "keys → OK ✅"
   fi
 else
   warn "RL-Swarm NOT found — skipping"
 fi
 
 
-
 ###################################################################
-# 6) Install systemd service
+# 6) Install bot.service
 ###################################################################
 msg "[6/7] Installing bot.service…"
 
 cat >/etc/systemd/system/bot.service <<EOF
 [Unit]
-Description=Deklan Node Bot
+Description=Deklan Node Bot (Telegram)
 After=network-online.target
 Wants=network-online.target
+
 StartLimitIntervalSec=60
 StartLimitBurst=15
 
@@ -146,12 +147,17 @@ Group=root
 WorkingDirectory=$BOT_DIR
 EnvironmentFile=-$BOT_DIR/.env
 
-ExecStart=/bin/bash -c '\
-  if [ -x "$BOT_DIR/.venv/bin/python" ]; then \
-      exec $BOT_DIR/.venv/bin/python $BOT_DIR/bot.py; \
-  else \
-      exec /usr/bin/python3 $BOT_DIR/bot.py; \
-  fi'
+Environment="PATH=$BOT_DIR/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+ExecStart=/bin/bash -c '
+  PYBIN="$BOT_DIR/.venv/bin/python";
+  if [ ! -x "$PYBIN" ]; then
+      PYBIN="$(command -v python3)";
+  fi;
+  exec "$PYBIN" $BOT_DIR/bot.py
+'
+
+ExecReload=/bin/kill -HUP \$MAINPID
 
 Restart=always
 RestartSec=3
@@ -183,39 +189,65 @@ Environment="PYTHONIOENCODING=UTF-8"
 WantedBy=multi-user.target
 EOF
 
-
 systemctl daemon-reload
 systemctl enable --now bot
 msg "bot.service installed ✅"
 
 
 ###################################################################
-# 7) Monitor.timer
+# 7) Monitor.timer + service
 ###################################################################
-msg "[7/7] Installing monitor.timer…"
+msg "[7/7] Installing monitor.service + timer…"
 
 cat >/etc/systemd/system/monitor.service <<EOF
 [Unit]
-Description=Deklan Node Monitor
+Description=Deklan Node Monitor (oneshot)
+After=network-online.target
+Wants=network-online.target
+
+ConditionPathExists=$BOT_DIR/monitor.py
 
 [Service]
 Type=oneshot
 WorkingDirectory=$BOT_DIR
 EnvironmentFile=-$BOT_DIR/.env
-ExecStart=$BOT_DIR/.venv/bin/python $BOT_DIR/monitor.py
+
+ExecStart=/bin/bash -c '
+  PYBIN="$BOT_DIR/.venv/bin/python";
+  if [ ! -x "$PYBIN" ]; then
+      PYBIN="$(command -v python3)";
+  fi;
+  exec "\$PYBIN" monitor.py
+'
+
 StandardOutput=journal
 StandardError=journal
+
 Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONIOENCODING=UTF-8"
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
 EOF
 
 
 cat >/etc/systemd/system/monitor.timer <<EOF
 [Unit]
-Description=Run Deklan Node Monitor
+Description=Run Deklan Node Monitor periodically
+After=network-online.target
+Wants=network-online.target
 
 [Timer]
-OnBootSec=3m
+OnBootSec=2m
 OnUnitActiveSec=3h
+RandomizedDelaySec=45
 Persistent=true
 Unit=monitor.service
 
@@ -226,7 +258,6 @@ EOF
 systemctl daemon-reload
 systemctl enable --now monitor.timer
 msg "monitor.timer installed ✅"
-
 
 
 ###################################################################
