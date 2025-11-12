@@ -38,6 +38,8 @@ ALLOWED_USER_IDS = [i.strip() for i in env("ALLOWED_USER_IDS", "").split(",") if
 ENABLE_DANGER = env("ENABLE_DANGER_ZONE", "0") == "1"
 DANGER_PASS   = env("DANGER_PASS", "")
 
+REQUIRED_FILES = ["swarm.pem", "userApiKey.json", "userData.json"]
+
 if not BOT_TOKEN or not CHAT_ID:
     raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — edit .env and restart bot")
 
@@ -46,14 +48,14 @@ if not BOT_TOKEN or not CHAT_ID:
 # ╚════════════════════════════════════════════════════════════╝
 
 def _shell(cmd: str) -> str:
-    """Run shell command and return stdout"""
+    """Run shell command and return stdout (or command output on error)."""
     try:
         return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True).strip()
     except subprocess.CalledProcessError as e:
         return (e.output or "").strip()
 
 def _authorized(update: Update) -> bool:
-    """Check if user is allowed to control bot"""
+    """Check if the incoming user/chat is authorized to control the bot."""
     uid = str(update.effective_user.id)
     if str(update.effective_chat.id) != CHAT_ID:
         return False
@@ -62,7 +64,7 @@ def _authorized(update: Update) -> bool:
     return uid == CHAT_ID or uid in ALLOWED_USER_IDS
 
 async def _send_long(upd_msg, text: str):
-    """Send long text messages (split automatically to avoid Telegram error)"""
+    """Send long text safely by splitting into chunks to avoid Telegram size issues."""
     CHUNK = 3800
     parts = [text[i:i+CHUNK] for i in range(0, len(text), CHUNK)]
     first = True
@@ -71,7 +73,11 @@ async def _send_long(upd_msg, text: str):
             await upd_msg.edit_message_text(p, parse_mode="Markdown")
             first = False
         else:
-            await upd_msg.message.reply_text(p, parse_mode="Markdown")
+            # if upd_msg is CallbackQuery we send reply via upd_msg.message
+            if hasattr(upd_msg, "message"):
+                await upd_msg.message.reply_text(p, parse_mode="Markdown")
+            else:
+                await upd_msg.reply_text(p, parse_mode="Markdown")
 
 # ╔════════════════════════════════════════════════════════════╗
 # ║                    🔧 SYSTEM OPERATIONS                    ║
@@ -103,10 +109,12 @@ def _clean():
         "journalctl --vacuum-size=200M",
         "rm -rf /tmp/*"
     ]
-    for c in cmds: _shell(c)
+    for c in cmds:
+        _shell(c)
     return "🧹 System cleaned successfully"
 
 def _run_remote(fname: str) -> str:
+    """Fetch script from AUTO_REPO and run it; return output or 'ERR'."""
     url = f"{AUTO_REPO}{fname}"
     tmp = f"/tmp/{fname}"
     try:
@@ -117,10 +125,12 @@ def _run_remote(fname: str) -> str:
         return e.output or "ERR"
 
 def _notify(title: str, msg: str):
-    """Send Telegram notify"""
+    """Send a compact notify to main CHAT_ID (best-effort)."""
     if not BOT_TOKEN or not CHAT_ID:
         return
-    text = f"⚙️ *Deklan-Suite Auto Report*\n━━━━━━━━━━━━━━\n🖥 Host: `{os.uname().nodename}`\n🕒 {time.strftime('%Y-%m-%d %H:%M:%S')}\n━━━━━━━━━━━━━━\n*{title}*\n```\n{msg[:1800]}\n```"
+    # keep message safe-size and simplified
+    safe_msg = msg.replace("`", "'")[:1600]
+    text = f"⚙️ *Deklan-Suite Auto Report*\nHost: `{os.uname().nodename}`\nTime: {time.strftime('%Y-%m-%d %H:%M:%S')}\n*{title}*\n```\n{safe_msg}\n```"
     _shell(f"curl -s -X POST 'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage' -d chat_id={CHAT_ID} -d parse_mode=Markdown -d text=\"{text}\" >/dev/null 2>&1 || true")
 
 # ╔════════════════════════════════════════════════════════════╗
@@ -142,8 +152,13 @@ def _panel(name: str, service: str, stats: str, rnd: str) -> str:
         if ":" in ln:
             k, v = ln.split(":", 1)
             d[k.strip()] = v.strip()
-    cpu, ram, disk, up = d.get("CPU", "0%"), d.get("RAM", "0%"), d.get("Disk", "0%"), d.get("Uptime", "--")
-    cpu_b, ram_b, disk_b = _bar(cpu), _bar(ram), _bar(disk)
+    cpu = d.get("CPU", "0%")
+    ram = d.get("RAM", "0%")
+    disk = d.get("Disk", "0%")
+    up = d.get("Uptime", "--")
+    cpu_b = _bar(cpu)
+    ram_b = _bar(ram)
+    disk_b = _bar(disk)
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     return f"""```
 ████  DEKLAN-SUITE STATUS DASHBOARD  ████
@@ -219,39 +234,53 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if a == "status":
         panel = _panel(NODE_NAME, SERVICE_NODE, _stats(), _round())
         return await q.edit_message_text(panel, parse_mode="Markdown", reply_markup=_main_menu())
+
     if a in ["start", "stop", "restart"]:
         _shell(f"systemctl {a} {SERVICE_NODE}")
         _notify(f"Node {a.title()}ed", f"{SERVICE_NODE} service {a} complete.")
         return await q.edit_message_text(f"✅ Node {a} executed.", reply_markup=_main_menu())
+
     if a == "logs":
-        return await _send_long(q, f"📜 Logs\n```\n{_logs()}\n```")
+        logs = _logs()
+        return await _send_long(q, f"📜 Logs\n```\n{logs}\n```")
+
     if a == "clean":
-        res = _clean(); _notify("🧹 Clean Done", res)
+        res = _clean()
+        _notify("🧹 Clean Done", res)
         return await q.edit_message_text(res, reply_markup=_main_menu())
+
     if a == "installer":
         return await q.edit_message_text("🧩 *Smart Installer*", parse_mode="Markdown", reply_markup=_installer_menu())
+
     if a.startswith("inst_"):
         m = a.split("_", 1)[1]
-        f = {"install":"install.sh","reinstall":"reinstall.sh","update":"update.sh","uninstall":"uninstall.sh"}.get(m)
-        r = _run_remote(f); _notify(f"⚙️ {m.title()} Done", r[:800])
-        return await _send_long(q, f"✅ {m.upper()} Completed\n```\n{r}\n```")
+        fname = {"install":"install.sh","reinstall":"reinstall.sh","update":"update.sh","uninstall":"uninstall.sh"}.get(m, "install.sh")
+        result = _run_remote(fname)
+        _notify(f"⚙️ {m.title()} Done", result[:800])
+        return await _send_long(q, f"✅ {m.upper()} Completed\n```\n{result}\n```")
+
     if a == "update_check":
-        r = _run_remote("autoupdate.sh")
-        return await _send_long(q, f"🔎 *Auto-Update Check*\n```\n{r}\n```")
+        result = _run_remote("autoupdate.sh")
+        return await _send_long(q, f"🔎 *Auto-Update Check*\n```\n{result}\n```")
+
     if a == "danger":
         return await q.edit_message_text("⚠️ *Danger Zone*", parse_mode="Markdown", reply_markup=_danger_menu())
+
     if a.startswith("dz_"):
         context.user_data["awaiting_password"] = a
         return await q.edit_message_text(f"⚠️ `{a.replace('dz_','').upper()}` — Enter Danger Password:", parse_mode="Markdown")
+
     if a == "back":
         return await q.edit_message_text("⚡ Main Menu", reply_markup=_main_menu())
 
 # ╔════════════════════════════════════════════════════════════╗
-# ║                    💬 TEXT INPUT HANDLER                   ║
+# ║                    💬 TEXT HANDLER                         ║
 # ╚════════════════════════════════════════════════════════════╝
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt = update.message.text.strip()
+    # installer confirm not required (we run remote script immediately),
+    # but danger actions require password verification
     if "awaiting_password" in context.user_data:
         act = context.user_data.pop("awaiting_password")
         if txt != DANGER_PASS:
@@ -266,11 +295,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif act == "dz_clean_all":
             r = _shell(f"systemctl stop {SERVICE_NODE}; rm -rf {RL_DIR}; docker system prune -af; swapoff -a; rm -f /swapfile")
         elif act == "dz_reboot":
-            r = "Rebooting VPS…"; _shell("reboot")
+            r = "Rebooting VPS…"
+            _shell("reboot")
         else:
             r = "Unknown danger action"
         _notify("⚠️ Danger Executed", r)
         return await _send_long(update, f"✅ Done\n```\n{r}\n```")
+    # fallback: ignore other text
+    return
 
 # ╔════════════════════════════════════════════════════════════╗
 # ║                      🚀 MAIN EXECUTION                     ║
