@@ -1,162 +1,100 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+═════════════════════════════════════════════════════════════════════════════
+        ⚡ DEKLAN-SUITE BOT v3.5 EXTENDED CINEMATIC MODE ⚡
+─────────────────────────────────────────────────────────────────────────────
+ Unified Node Manager + Telegram Control + Auto Notify + Auto Update System
+─────────────────────────────────────────────────────────────────────────────
+   🧠  Developer : Deklan × GPT-5
+   🧩  Project   : Deklan-Suite (All-in-One Smart Node Manager)
+   ⚙️  Stack     : Python + Telegram Bot API + Linux Systemd + Docker
+═════════════════════════════════════════════════════════════════════════════
+"""
+
 import os
 import time
 import subprocess
 import psutil
 from datetime import timedelta
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+# ╔════════════════════════════════════════════════════════════╗
+# ║                    🧠 ENVIRONMENT SETUP                    ║
+# ╚════════════════════════════════════════════════════════════╝
 
-# ======================================================
-# ENV / CONFIG
-# ======================================================
 env = os.getenv
-
 BOT_TOKEN = env("BOT_TOKEN", "")
 CHAT_ID   = str(env("CHAT_ID", ""))
-
 NODE_NAME = env("NODE_NAME", "deklan-node")
-
-SERVICE   = env("SERVICE_NAME", "gensyn")
+SERVICE_NODE = env("SERVICE_NAME", "gensyn")
 LOG_LINES = int(env("LOG_LINES", "80"))
-
-# ✅ FIXED — RL_DIR HARUS /root/rl-swarm
 RL_DIR    = env("RL_DIR", "/root/rl-swarm")
-
-# ✅ IDENTITY
 KEY_DIR   = env("KEY_DIR", "/root/deklan")
-
-ROUND_GREP = env("ROUND_GREP_PATTERN", "Joining round:")
-LOG_MAX    = int(env("LOG_MAX_CHARS", "3500"))
-
-MONITOR_TRY_REINSTALL = env("MONITOR_TRY_REINSTALL", "1") == "1"
-
-ALLOWED_USER_IDS = [
-    i.strip() for i in env("ALLOWED_USER_IDS", "").split(",") if i.strip()
-]
-
+AUTO_REPO = env("AUTO_INSTALLER_GITHUB", "https://raw.githubusercontent.com/deklan400/deklan-suite/main/")
+LOG_MAX   = int(env("LOG_MAX_CHARS", "3500"))
+ALLOWED_USER_IDS = [i.strip() for i in env("ALLOWED_USER_IDS", "").split(",") if i.strip()]
 ENABLE_DANGER = env("ENABLE_DANGER_ZONE", "0") == "1"
 DANGER_PASS   = env("DANGER_PASS", "")
 
-AUTO_REPO = env(
-    "AUTO_INSTALLER_GITHUB",
-    "https://raw.githubusercontent.com/deklan400/deklan-autoinstall/main/"
-)
-
 if not BOT_TOKEN or not CHAT_ID:
-    raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — edit .env then restart bot")
+    raise SystemExit("❌ BOT_TOKEN / CHAT_ID missing — edit .env and restart bot")
 
+# ╔════════════════════════════════════════════════════════════╗
+# ║                   ⚙️ UTILITY FUNCTIONS                    ║
+# ╚════════════════════════════════════════════════════════════╝
 
-# ======================================================
-# HELPERS
-# ======================================================
 def _shell(cmd: str) -> str:
+    """Run shell command and return stdout"""
     try:
-        return subprocess.check_output(
-            cmd,
-            shell=True,
-            stderr=subprocess.STDOUT,
-            text=True
-        ).strip()
+        return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True).strip()
     except subprocess.CalledProcessError as e:
         return (e.output or "").strip()
 
-
 def _authorized(update: Update) -> bool:
+    """Check if user is allowed to control bot"""
     uid = str(update.effective_user.id)
-
     if str(update.effective_chat.id) != CHAT_ID:
         return False
-
     if not ALLOWED_USER_IDS:
         return uid == CHAT_ID
-
     return uid == CHAT_ID or uid in ALLOWED_USER_IDS
 
-
-async def _send_long(upd_msg, text: str, parse_mode="Markdown"):
+async def _send_long(upd_msg, text: str):
+    """Send long text messages (split automatically to avoid Telegram error)"""
     CHUNK = 3800
-
-    if len(text) <= CHUNK:
-        if hasattr(upd_msg, "edit_message_text"):
-            return await upd_msg.edit_message_text(text, parse_mode=parse_mode)
-        return await upd_msg.message.reply_text(text, parse_mode=parse_mode)
-
     parts = [text[i:i+CHUNK] for i in range(0, len(text), CHUNK)]
+    first = True
+    for p in parts:
+        if first and hasattr(upd_msg, "edit_message_text"):
+            await upd_msg.edit_message_text(p, parse_mode="Markdown")
+            first = False
+        else:
+            await upd_msg.message.reply_text(p, parse_mode="Markdown")
 
-    if hasattr(upd_msg, "edit_message_text"):
-        await upd_msg.edit_message_text(parts[0], parse_mode=parse_mode)
-    else:
-        await upd_msg.message.reply_text(parts[0], parse_mode=parse_mode)
+# ╔════════════════════════════════════════════════════════════╗
+# ║                    🔧 SYSTEM OPERATIONS                    ║
+# ╚════════════════════════════════════════════════════════════╝
 
-    for p in parts[1:]:
-        await upd_msg.message.reply_text(p, parse_mode=parse_mode)
-
-
-# ======================================================
-# SYSTEMD OPS
-# ======================================================
-def _service_active() -> bool:
-    return _shell(f"systemctl is-active {SERVICE}") == "active"
-
-
-def _logs(n: int) -> str:
-    return _shell(f"journalctl -u {SERVICE} -n {n} --no-pager")
-
-
-def _restart():
-    return _shell(f"systemctl restart {SERVICE}")
-
-
-def _start():
-    return _shell(f"systemctl start {SERVICE}")
-
-
-def _stop():
-    return _shell(f"systemctl stop {SERVICE}")
-
-
-def _round():
-    cmd = rf"journalctl -u {SERVICE} --no-pager | grep -E '{ROUND_GREP}' | tail -n1"
-    return _shell(cmd) or "(round info not found)"
-
-
-def _stats():
+def _stats() -> str:
     try:
         cpu = psutil.cpu_percent(interval=0.5)
-        vm  = psutil.virtual_memory()
-        du  = psutil.disk_usage("/")
-        uptime_sec = time.time() - psutil.boot_time()
-        up = str(timedelta(seconds=int(uptime_sec)))
-
-        return (
-            f"CPU   : {cpu:.1f}%\n"
-            f"RAM   : {vm.percent:.1f}% ({vm.used//(1024**3)}G/{vm.total//(1024**3)}G)\n"
-            f"Disk  : {du.percent:.1f}% ({du.used//(1024**3)}G/{du.total//(1024**3)}G)\n"
-            f"Uptime: {up}"
-        )
-    except:
+        vm = psutil.virtual_memory()
+        du = psutil.disk_usage("/")
+        uptime = str(timedelta(seconds=int(time.time() - psutil.boot_time())))
+        return f"CPU: {cpu:.1f}%\nRAM: {vm.percent:.1f}%\nDisk: {du.percent:.1f}%\nUptime: {uptime}"
+    except Exception:
         return "(system stats unavailable)"
 
+def _logs() -> str:
+    return _shell(f"journalctl -u {SERVICE_NODE} -n {LOG_LINES} --no-pager")[:LOG_MAX]
 
-# ======================================================
-# SAFE CLEAN
-# ======================================================
-def _safe_clean() -> str:
-    before = _shell("df -h / | tail -1 | awk '{print $4}'")
+def _round():
+    cmd = f"journalctl -u {SERVICE_NODE} --no-pager | grep -E 'Joining round:' | tail -n1"
+    return _shell(cmd) or "(round info not found)"
 
+def _clean():
     cmds = [
         "docker image prune -f",
         "docker container prune -f",
@@ -165,75 +103,35 @@ def _safe_clean() -> str:
         "journalctl --vacuum-size=200M",
         "rm -rf /tmp/*"
     ]
+    for c in cmds: _shell(c)
+    return "🧹 System cleaned successfully"
 
-    for c in cmds:
-        _shell(c)
-
-    after = _shell("df -h / | tail -1 | awk '{print $4}'")
-
-    return (
-        "✅ SAFE-CLEAN DONE\n"
-        f"Before: {before}\n"
-        f"After : {after}\n"
-        "(Docker, Logs, APT, /tmp cleaned)\n"
-    )
-
-
-# ======================================================
-# SWAP
-# ======================================================
-def _set_swap(size_gb: int) -> str:
-    try:
-        size_mb = size_gb * 1024
-
-        cmds = [
-            "swapoff -a",
-            "sed -i '/swapfile/d' /etc/fstab",
-            "rm -f /swapfile",
-            f"fallocate -l {size_gb}G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count={size_mb}",
-            "chmod 600 /swapfile",
-            "mkswap /swapfile",
-            "swapon /swapfile",
-            "echo '/swapfile none swap sw 0 0' >> /etc/fstab"
-        ]
-        for c in cmds:
-            _shell(c)
-
-        return f"✅ Swap set → {size_gb} GB"
-
-    except Exception as e:
-        return f"❌ Swap failed: {e}"
-
-
-# ======================================================
-# REMOTE INSTALLER
-# ======================================================
 def _run_remote(fname: str) -> str:
     url = f"{AUTO_REPO}{fname}"
     tmp = f"/tmp/{fname}"
     try:
         subprocess.check_output(f"curl -s -o {tmp} {url}", shell=True)
         subprocess.check_output(f"chmod +x {tmp}", shell=True)
-        return subprocess.check_output(
-            f"bash {tmp}",
-            shell=True,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
+        return subprocess.check_output(f"bash {tmp}", shell=True, stderr=subprocess.STDOUT, text=True)
     except subprocess.CalledProcessError as e:
         return e.output or "ERR"
 
+def _notify(title: str, msg: str):
+    """Send Telegram notify"""
+    if not BOT_TOKEN or not CHAT_ID:
+        return
+    text = f"⚙️ *Deklan-Suite Auto Report*\n━━━━━━━━━━━━━━\n🖥 Host: `{os.uname().nodename}`\n🕒 {time.strftime('%Y-%m-%d %H:%M:%S')}\n━━━━━━━━━━━━━━\n*{title}*\n```\n{msg[:1800]}\n```"
+    _shell(f"curl -s -X POST 'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage' -d chat_id={CHAT_ID} -d parse_mode=Markdown -d text=\"{text}\" >/dev/null 2>&1 || true")
 
-# ======================================================
-# PANEL
-# ======================================================
-def _escape_md(t: str) -> str:
-    return t.replace("```", "'''")
+# ╔════════════════════════════════════════════════════════════╗
+# ║                    🎛 CINEMATIC STATUS PANEL                ║
+# ╚════════════════════════════════════════════════════════════╝
 
 def _bar(v: str) -> str:
     try:
         val = float("".join(c for c in v if (c.isdigit() or c == ".")))
         filled = int(round(val / 10))
+        filled = max(0, min(10, filled))
         return "◼" * filled + "◻" * (10 - filled)
     except:
         return "◻" * 10
@@ -244,21 +142,11 @@ def _panel(name: str, service: str, stats: str, rnd: str) -> str:
         if ":" in ln:
             k, v = ln.split(":", 1)
             d[k.strip()] = v.strip()
-
-    cpu   = d.get("CPU", "0%")
-    ram   = d.get("RAM", "0%")
-    disk  = d.get("Disk", "0%")
-    up    = d.get("Uptime", "--")
-
-    cpu_b  = _bar(cpu)
-    ram_b  = _bar(ram)
-    disk_b = _bar(disk)
-
+    cpu, ram, disk, up = d.get("CPU", "0%"), d.get("RAM", "0%"), d.get("Disk", "0%"), d.get("Uptime", "--")
+    cpu_b, ram_b, disk_b = _bar(cpu), _bar(ram), _bar(disk)
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
-
-    txt = f"""
-```
-████  GENSYN QUANTUM STATUS  ████
+    return f"""```
+████  DEKLAN-SUITE STATUS DASHBOARD  ████
 
  Node       : {name}
  Service    : {service}
@@ -270,403 +158,132 @@ def _panel(name: str, service: str, stats: str, rnd: str) -> str:
  CPU        : {cpu:<8} {cpu_b}
  RAM        : {ram:<8} {ram_b}
  Disk       : {disk:<8} {disk_b}
- Temp       : -- °C
 
  ── System ─────────────────
  Identity   : {'✅ Valid' if os.path.isdir(KEY_DIR) else '⚠ Missing'}
  Docker     : {'✅ OK' if 'docker' in _shell('which docker || echo') else '⚠ N/A'}
 
  Last Sync  : {ts}
-```
-""".strip("\n")
+```"""
 
-    return _escape_md(txt)
-
-
-# ======================================================
-# MENUS
-# ======================================================
-def _swap_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("16G", callback_data="swap_16")],
-        [InlineKeyboardButton("32G", callback_data="swap_32")],
-        [InlineKeyboardButton("64G", callback_data="swap_64")],
-        [InlineKeyboardButton("Custom", callback_data="swap_custom")],
-        [InlineKeyboardButton("⬅ Back", callback_data="back")],
-    ])
-
-
-def _installer_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 Install Node",   callback_data="inst_install")],
-        [InlineKeyboardButton("🔄 Reinstall Node", callback_data="inst_reinstall")],
-        [InlineKeyboardButton("♻ Update Node",     callback_data="inst_update")],
-        [InlineKeyboardButton("🧹 Uninstall Node", callback_data="inst_uninstall")],
-        [InlineKeyboardButton("⬅ Back",            callback_data="back")],
-    ])
-
+# ╔════════════════════════════════════════════════════════════╗
+# ║                        🕹️ MAIN MENU                        ║
+# ╚════════════════════════════════════════════════════════════╝
 
 def _main_menu():
     rows = [
         [InlineKeyboardButton("📊 Status", callback_data="status")],
-        [
-            InlineKeyboardButton("🟢 Start", callback_data="start"),
-            InlineKeyboardButton("🔴 Stop",  callback_data="stop"),
-        ],
-        [InlineKeyboardButton("🔁 Restart",   callback_data="restart")],
-        [InlineKeyboardButton("📜 Logs",      callback_data="logs")],
-        [InlineKeyboardButton("ℹ️ Round",     callback_data="round")],
-        [InlineKeyboardButton("🧹 Safe Clean", callback_data="safe_clean")],
-        [InlineKeyboardButton("💾 Swap Manager", callback_data="swap")],
+        [InlineKeyboardButton("🟢 Start", callback_data="start"),
+         InlineKeyboardButton("🔴 Stop", callback_data="stop")],
+        [InlineKeyboardButton("🔁 Restart", callback_data="restart")],
+        [InlineKeyboardButton("📜 Logs", callback_data="logs")],
         [InlineKeyboardButton("🧩 Installer", callback_data="installer")],
-        [InlineKeyboardButton("❓ Help",      callback_data="help")],
+        [InlineKeyboardButton("🧹 Clean", callback_data="clean")],
+        [InlineKeyboardButton("⚙ Auto-Update", callback_data="update_check")],
+        [InlineKeyboardButton("❓ Help", callback_data="help")]
     ]
-
     if ENABLE_DANGER:
-        rows.append([InlineKeyboardButton("⚠️ Danger Zone", callback_data="dz")])
-
+        rows.append([InlineKeyboardButton("⚠️ Danger Zone", callback_data="danger")])
     return InlineKeyboardMarkup(rows)
 
+def _installer_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📦 Install", callback_data="inst_install")],
+        [InlineKeyboardButton("🔄 Reinstall", callback_data="inst_reinstall")],
+        [InlineKeyboardButton("♻ Update", callback_data="inst_update")],
+        [InlineKeyboardButton("🧹 Uninstall", callback_data="inst_uninstall")],
+        [InlineKeyboardButton("⬅ Back", callback_data="back")]
+    ])
 
 def _danger_menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔥 Remove RL-Swarm", callback_data="dz_rm_node")],
-        [InlineKeyboardButton("🐋 Clean Docker",    callback_data="dz_rm_docker")],
-        [InlineKeyboardButton("💾 Remove Swap",     callback_data="dz_rm_swap")],
-        [InlineKeyboardButton("🧹 Full Clean",      callback_data="dz_clean_all")],
-        [InlineKeyboardButton("🔁 Reboot VPS",      callback_data="dz_reboot")],
-        [InlineKeyboardButton("⬅ Back",             callback_data="back")],
+        [InlineKeyboardButton("🔥 Remove Node", callback_data="dz_rm_node")],
+        [InlineKeyboardButton("🐋 Clean Docker", callback_data="dz_rm_docker")],
+        [InlineKeyboardButton("💾 Remove Swap", callback_data="dz_rm_swap")],
+        [InlineKeyboardButton("🧹 Full Clean", callback_data="dz_clean_all")],
+        [InlineKeyboardButton("💣 Reboot VPS", callback_data="dz_reboot")],
+        [InlineKeyboardButton("⬅ Back", callback_data="back")]
     ])
 
+# ╔════════════════════════════════════════════════════════════╗
+# ║                    🎯 CALLBACK HANDLER                     ║
+# ╚════════════════════════════════════════════════════════════╝
 
-# ======================================================
-# COMMAND HANDLERS
-# ======================================================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _authorized(update):
-        return await update.message.reply_text("❌ Unauthorized.")
-
-    await update.message.reply_text(
-        f"⚡ *{NODE_NAME}* Control Panel",
-        parse_mode="Markdown",
-        reply_markup=_main_menu(),
-    )
-
-
-async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _authorized(update):
-        return await update.message.reply_text("❌ Unauthorized.")
-
-    await update.message.reply_text(
-        "✅ *Commands:*\n"
-        "/start   → menu\n"
-        "/status  → stats\n"
-        "/logs    → last logs\n"
-        "/restart → restart node\n"
-        "/round   → last round info\n",
-        parse_mode="Markdown"
-    )
-
-
-async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _authorized(update):
-        return await update.message.reply_text("❌ Unauthorized.")
-
-    stats = _stats()
-    rnd   = _round()
-    panel = _panel(NODE_NAME, SERVICE, stats, rnd)
-
-    await update.message.reply_text(
-        panel,
-        parse_mode="Markdown",
-        reply_markup=_main_menu(),
-    )
-
-
-async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _authorized(update):
-        return await update.message.reply_text("❌ Unauthorized.")
-
-    logs = _logs(LOG_LINES)
-    logs = logs[-LOG_MAX:] if len(logs) > LOG_MAX else logs
-
-    await _send_long(
-        update,
-       f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```",
-        parse_mode="Markdown"
-    )
-
-
-async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _authorized(update):
-        return await update.message.reply_text("❌ Unauthorized.")
-
-    _restart()
-    await update.message.reply_text("🔁 Restarting…", reply_markup=_main_menu())
-
-
-async def cmd_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _authorized(update):
-        return await update.message.reply_text("❌ Unauthorized.")
-
-    info = _round()
-
-    await update.message.reply_text(
-       f"ℹ️ *Last Round*\n```\n{info}\n```",
-        parse_mode="Markdown",
-        reply_markup=_main_menu(),
-    )
-
-
-# ======================================================
-# BUTTON HANDLER
-# ======================================================
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-
     if not _authorized(update):
-        return await q.edit_message_text("❌ Unauthorized.")
+        return await q.edit_message_text("❌ Unauthorized access.")
+    a = q.data
 
-    action = q.data
+    if a == "status":
+        panel = _panel(NODE_NAME, SERVICE_NODE, _stats(), _round())
+        return await q.edit_message_text(panel, parse_mode="Markdown", reply_markup=_main_menu())
+    if a in ["start", "stop", "restart"]:
+        _shell(f"systemctl {a} {SERVICE_NODE}")
+        _notify(f"Node {a.title()}ed", f"{SERVICE_NODE} service {a} complete.")
+        return await q.edit_message_text(f"✅ Node {a} executed.", reply_markup=_main_menu())
+    if a == "logs":
+        return await _send_long(q, f"📜 Logs\n```\n{_logs()}\n```")
+    if a == "clean":
+        res = _clean(); _notify("🧹 Clean Done", res)
+        return await q.edit_message_text(res, reply_markup=_main_menu())
+    if a == "installer":
+        return await q.edit_message_text("🧩 *Smart Installer*", parse_mode="Markdown", reply_markup=_installer_menu())
+    if a.startswith("inst_"):
+        m = a.split("_", 1)[1]
+        f = {"install":"install.sh","reinstall":"reinstall.sh","update":"update.sh","uninstall":"uninstall.sh"}.get(m)
+        r = _run_remote(f); _notify(f"⚙️ {m.title()} Done", r[:800])
+        return await _send_long(q, f"✅ {m.upper()} Completed\n```\n{r}\n```")
+    if a == "update_check":
+        r = _run_remote("autoupdate.sh")
+        return await _send_long(q, f"🔎 *Auto-Update Check*\n```\n{r}\n```")
+    if a == "danger":
+        return await q.edit_message_text("⚠️ *Danger Zone*", parse_mode="Markdown", reply_markup=_danger_menu())
+    if a.startswith("dz_"):
+        context.user_data["awaiting_password"] = a
+        return await q.edit_message_text(f"⚠️ `{a.replace('dz_','').upper()}` — Enter Danger Password:", parse_mode="Markdown")
+    if a == "back":
+        return await q.edit_message_text("⚡ Main Menu", reply_markup=_main_menu())
 
-    # SAFE CLEAN
-    if action == "safe_clean":
-        res = _safe_clean()
-        return await _send_long(q, res, "Markdown")
+# ╔════════════════════════════════════════════════════════════╗
+# ║                    💬 TEXT INPUT HANDLER                   ║
+# ╚════════════════════════════════════════════════════════════╝
 
-    # Installer
-    if action == "installer":
-        return await q.edit_message_text(
-            "🧩 *Installer Menu*",
-            parse_mode="Markdown",
-            reply_markup=_installer_menu()
-        )
-
-    # INSTALL FLOW
-    if action.startswith("inst_"):
-        mode = action.split("_")[1]
-        context.user_data["pending_inst"] = mode
-        return await q.edit_message_text(
-            f"⚠ Confirm `{mode.upper()}`?\n\nType *YES* or NO.",
-            parse_mode="Markdown"
-        )
-
-    # SWAP
-    if action == "swap":
-        return await q.edit_message_text(
-            "💾 *Swap Manager*",
-            parse_mode="Markdown",
-            reply_markup=_swap_menu()
-        )
-
-    if action.startswith("swap_"):
-        size = action.split("_")[1]
-
-        if size == "custom":
-            context.user_data["awaiting_custom_swap"] = True
-            return await q.edit_message_text("💾 Enter SWAP size GB (ex: 48)")
-
-        res = _set_swap(int(size))
-        return await _send_long(q, res, "Markdown")
-
-    # DANGER
-    if action == "dz":
-        return await q.edit_message_text(
-            "⚠️ *Danger Zone — Password Required!*",
-            parse_mode="Markdown",
-            reply_markup=_danger_menu()
-        )
-
-    if action.startswith("dz_"):
-        context.user_data["awaiting_password"] = action
-        return await q.edit_message_text(
-           f"⚠️ `{action.replace('dz_', '').upper()}` — Enter Password:",
-            parse_mode="Markdown"
-        )
-
-    # BACK
-    if action == "back":
-        return await q.edit_message_text(
-            "⚡ Main Menu",
-            reply_markup=_main_menu()
-        )
-
-    # STATUS
-    if action == "status":
-        stats = _stats()
-        rnd   = _round()
-        panel = _panel(NODE_NAME, SERVICE, stats, rnd)
-
-        return await q.edit_message_text(
-            panel,
-            parse_mode="Markdown",
-            reply_markup=_main_menu()
-        )
-
-    # START
-    if action == "start":
-        _start()
-        return await q.edit_message_text("🟢 Starting…", reply_markup=_main_menu())
-
-    # STOP
-    if action == "stop":
-        _stop()
-        return await q.edit_message_text("🔴 Stopping…", reply_markup=_main_menu())
-
-    # RESTART
-    if action == "restart":
-        _restart()
-        return await q.edit_message_text("🔁 Restarting…", reply_markup=_main_menu())
-
-    # LOGS
-    if action == "logs":
-        logs = _logs(LOG_LINES)
-        logs = logs[-LOG_MAX:] if len(logs) > LOG_MAX else logs
-
-        return await _send_long(
-            q,
-           f"📜 *Last {LOG_LINES} lines*\n```\n{logs}\n```",
-            parse_mode="Markdown"
-        )
-
-    # ROUND
-    if action == "round":
-        info = _round()
-        return await q.edit_message_text(
-           f"ℹ️ *Last Round*\n```\n{info}\n```",
-            parse_mode="Markdown",
-            reply_markup=_main_menu(),
-        )
-
-    # HELP
-    if action == "help":
-        return await q.edit_message_text(
-            "✅ *Commands:*\n"
-            "/start  → menu\n"
-            "/status → stats\n"
-            "/logs   → last logs\n"
-            "/restart→ restart node\n"
-            "/round  → last round\n",
-            parse_mode="Markdown",
-            reply_markup=_main_menu(),
-        )
-
-
-# ======================================================
-# TEXT HANDLER
-# ======================================================
-async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-
-    # Install confirm
-    if "pending_inst" in context.user_data:
-        mode = context.user_data.pop("pending_inst")
-
-        if text.upper() != "YES":
-            return await update.message.reply_text("❌ Cancelled.")
-
-        await update.message.reply_text(f"⚙ Running {mode.upper()}…")
-
-        script_map = {
-            "install":   "install.sh",
-            "reinstall": "reinstall.sh",
-            "update":    "update.sh",
-            "uninstall": "uninstall.sh",
-        }
-
-        fname = script_map.get(mode, "install.sh")
-        result = _run_remote(fname)
-
-        if len(result) > LOG_MAX:
-            result = result[-LOG_MAX:]
-
-        return await _send_long(
-            update,
-           f"✅ Done\n```\n{result}\n```",
-            parse_mode="Markdown"
-        )
-
-    # Custom swap
-    if "awaiting_custom_swap" in context.user_data:
-        context.user_data.pop("awaiting_custom_swap")
-
-        try:
-            size = int(text)
-            res = _set_swap(size)
-        except:
-            res = "❌ Invalid number"
-
-        return await update.message.reply_text(res)
-
-    # Danger password
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    txt = update.message.text.strip()
     if "awaiting_password" in context.user_data:
-        action = context.user_data.pop("awaiting_password")
-
-        if text != DANGER_PASS:
+        act = context.user_data.pop("awaiting_password")
+        if txt != DANGER_PASS:
             return await update.message.reply_text("❌ Wrong password")
-
         await update.message.reply_text("✅ Verified! Running…")
-
-        if action == "dz_rm_node":
-            _shell(
-                f"systemctl stop {SERVICE}; "
-                f"systemctl disable {SERVICE}; "
-                f"rm -f /etc/systemd/system/{SERVICE}.service; "
-                f"systemctl daemon-reload; "
-                f"rm -rf {RL_DIR}"
-            )
-            res = "Node removed"
-
-        elif action == "dz_rm_docker":
-            res = _shell("docker ps -aq | xargs -r docker rm -f; docker system prune -af")
-
-        elif action == "dz_rm_swap":
-            res = _shell("swapoff -a; rm -f /swapfile; sed -i '/swapfile/d' /etc/fstab")
-
-        elif action == "dz_clean_all":
-            res = _shell(
-                f"systemctl stop {SERVICE}; "
-                f"rm -rf {RL_DIR}; "
-                f"docker system prune -af; "
-                f"swapoff -a; rm -f /swapfile"
-            )
-
-        elif action == "dz_reboot":
-            _shell("reboot")
-            res = "Rebooting…"
-
+        if act == "dz_rm_node":
+            r = _shell(f"systemctl stop {SERVICE_NODE}; rm -rf {RL_DIR}")
+        elif act == "dz_rm_docker":
+            r = _shell("docker system prune -af")
+        elif act == "dz_rm_swap":
+            r = _shell("swapoff -a; rm -f /swapfile; sed -i '/swapfile/d' /etc/fstab")
+        elif act == "dz_clean_all":
+            r = _shell(f"systemctl stop {SERVICE_NODE}; rm -rf {RL_DIR}; docker system prune -af; swapoff -a; rm -f /swapfile")
+        elif act == "dz_reboot":
+            r = "Rebooting VPS…"; _shell("reboot")
         else:
-            res = "Unknown action"
+            r = "Unknown danger action"
+        _notify("⚠️ Danger Executed", r)
+        return await _send_long(update, f"✅ Done\n```\n{r}\n```")
 
-        return await _send_long(
-            update,
-           f"✅ Done\n```\n{res}\n```",
-            parse_mode="Markdown"
-        )
+# ╔════════════════════════════════════════════════════════════╗
+# ║                      🚀 MAIN EXECUTION                     ║
+# ╚════════════════════════════════════════════════════════════╝
 
-    return
-
-
-# ======================================================
-# MAIN
-# ======================================================
 def main():
+    print("\n═══════════════════════════════════════════════════")
+    print("🚀 DEKLAN-SUITE BOT v3.5 EXTENDED CINEMATIC MODE ON")
+    print("═══════════════════════════════════════════════════\n")
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start",    start))
-    app.add_handler(CommandHandler("help",     cmd_help))
-    app.add_handler(CommandHandler("status",   cmd_status))
-    app.add_handler(CommandHandler("logs",     cmd_logs))
-    app.add_handler(CommandHandler("restart",  cmd_restart))
-    app.add_handler(CommandHandler("round",    cmd_round))
-
     app.add_handler(CallbackQueryHandler(handle_button))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-
-    print("✅ Bot running…")
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
